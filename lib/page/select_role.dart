@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:delivery_frontend/page/login_user.dart';
+import 'package:delivery_frontend/page/login_rider.dart';
+
 class SelectRolePage extends StatelessWidget {
   const SelectRolePage({super.key});
 
@@ -7,7 +9,6 @@ class SelectRolePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-
       body: Column(
         children: [
           // Header
@@ -41,9 +42,10 @@ class SelectRolePage extends StatelessWidget {
             height: 50,
             child: ElevatedButton(
               onPressed: () {
-                Navigator.push(
+                Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => const LoginUserPage()),
+                  MaterialPageRoute(
+                      builder: (context) => const LoginUserPage()),
                 );
               },
               style: ElevatedButton.styleFrom(
@@ -59,25 +61,26 @@ class SelectRolePage extends StatelessWidget {
           const SizedBox(height: 20),
 
           // ปุ่ม Rider
-          // SizedBox(
-          //   width: 200,
-          //   height: 50,
-          //   child: ElevatedButton(
-          //     // onPressed: () {
-          //     //   Navigator.push(
-          //     //     context,
-          //     //     MaterialPageRoute(builder: (context) => const ),
-          //     //   );
-          //     // },
-          //     style: ElevatedButton.styleFrom(
-          //       backgroundColor: Colors.green,
-          //       shape: RoundedRectangleBorder(
-          //         borderRadius: BorderRadius.circular(30),
-          //       ),
-          //     ),
-          //     child: const Text("Rider", style: TextStyle(color: Colors.white)),
-          //   ),
-          // ),
+          SizedBox(
+            width: 200,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const LoginRiderPage()),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+              child: const Text("Rider", style: TextStyle(color: Colors.white)),
+            ),
+          ),
 
           const Spacer(),
 
