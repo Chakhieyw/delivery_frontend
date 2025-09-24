@@ -1,5 +1,6 @@
 import 'package:delivery_frontend/page/dashboard_user.dart';
 import 'package:delivery_frontend/page/registeruser.dart';
+import 'package:delivery_frontend/page/select_role.dart'; // ✅ import หน้าเลือก role
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -23,7 +24,6 @@ class _LoginUserPageState extends State<LoginUserPage> {
       final name = _nameCtl.text.trim();
       final password = _passwordCtl.text.trim();
 
-      // 🔎 ค้นหา email จาก Firestore
       final query = await FirebaseFirestore.instance
           .collection("users")
           .where("name", isEqualTo: name)
@@ -41,12 +41,10 @@ class _LoginUserPageState extends State<LoginUserPage> {
       final userData = query.docs.first.data();
       final email = userData["email"];
 
-      // ✅ Login FirebaseAuth
       UserCredential userCred = await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: password);
 
       final uid = userCred.user!.uid;
-
       final doc =
           await FirebaseFirestore.instance.collection("users").doc(uid).get();
 
@@ -163,6 +161,23 @@ class _LoginUserPageState extends State<LoginUserPage> {
                           ),
                         ),
                       ],
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    // ✅ ปุ่มย้อนกลับไป select_role.dart
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const SelectRolePage()),
+                        );
+                      },
+                      child: const Text(
+                        "⬅️ กลับไปหน้าเลือกบทบาท",
+                        style: TextStyle(color: Colors.green),
+                      ),
                     ),
                   ],
                 ),

@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'register_rider.dart';
 import 'dashboard_rider.dart';
+import 'select_role.dart'; // ✅ เพิ่ม import
 
 class LoginRiderPage extends StatefulWidget {
   const LoginRiderPage({super.key});
@@ -12,15 +13,14 @@ class LoginRiderPage extends StatefulWidget {
 }
 
 class _LoginRiderPageState extends State<LoginRiderPage> {
-  final _nameCtl = TextEditingController(); // 👉 ใช้ name
-  final _passwordCtl = TextEditingController(); // 👉 ใช้ password
+  final _nameCtl = TextEditingController();
+  final _passwordCtl = TextEditingController();
   bool _loading = false;
 
   Future<void> _login() async {
     setState(() => _loading = true);
 
     try {
-      // 🔹 หา user จาก Firestore ด้วย name
       final snapshot = await FirebaseFirestore.instance
           .collection("riders")
           .where("name", isEqualTo: _nameCtl.text.trim())
@@ -36,9 +36,8 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
       }
 
       final riderData = snapshot.docs.first.data();
-      final email = riderData["email"]; // เอา email ที่เก็บไว้
+      final email = riderData["email"];
 
-      // 🔹 login ด้วย email + password ที่ user กรอก
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: _passwordCtl.text,
@@ -50,12 +49,9 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
         SnackBar(content: Text("✅ เข้าสู่ระบบสำเร็จ: ${riderData["name"]}")),
       );
 
-      // 👉 ไปหน้า Dashboard พร้อมส่ง name
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => DashboardRiderPage(),
-        ),
+        MaterialPageRoute(builder: (_) => const DashboardRiderPage()),
       );
     } on FirebaseAuthException catch (e) {
       String message = "เข้าสู่ระบบไม่สำเร็จ";
@@ -185,6 +181,22 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
                 ),
               ),
             ],
+          ),
+
+          const SizedBox(height: 15),
+
+          // ✅ ปุ่มกลับไป select_role
+          TextButton(
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const SelectRolePage()),
+              );
+            },
+            child: const Text(
+              "⬅️ กลับไปหน้าเลือกบทบาท",
+              style: TextStyle(color: Colors.green),
+            ),
           ),
 
           const Spacer(),
