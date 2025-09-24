@@ -15,6 +15,7 @@ class RegisterRiderPage extends StatefulWidget {
 
 class _RegisterRiderPageState extends State<RegisterRiderPage> {
   final _phoneCtl = TextEditingController();
+  final _emailCtl = TextEditingController();
   final _nameCtl = TextEditingController();
   final _passwordCtl = TextEditingController();
   final _confirmCtl = TextEditingController();
@@ -43,10 +44,9 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
     setState(() => _loading = true);
 
     try {
-      final email = "${_phoneCtl.text}@delivery.com";
       UserCredential user =
           await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
+        email: _emailCtl.text.trim(),
         password: _passwordCtl.text,
       );
 
@@ -65,6 +65,7 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
           .doc(user.user!.uid)
           .set({
         "phone": _phoneCtl.text,
+        "email": _emailCtl.text,
         "name": _nameCtl.text,
         "plate": _plateCtl.text,
         "role": "rider",
@@ -72,6 +73,7 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
         "createdAt": FieldValue.serverTimestamp(),
       });
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("✅ สมัคร Rider สำเร็จ")),
       );
@@ -81,6 +83,7 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
         MaterialPageRoute(builder: (_) => const LoginRiderPage()),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error: $e")),
       );
@@ -95,6 +98,7 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
       backgroundColor: Colors.white,
       body: Column(
         children: [
+          // Header
           Container(
             height: 80,
             width: double.infinity,
@@ -109,6 +113,7 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
               ),
             ),
           ),
+
           const SizedBox(height: 20),
           const Text(
             "สมัครสมาชิก Rider",
@@ -118,14 +123,19 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
               color: Colors.green,
             ),
           ),
+
           const SizedBox(height: 20),
+
           _buildTextField(_phoneCtl, Icons.phone, "เบอร์โทรศัพท์", false),
-          _buildTextField(_nameCtl, Icons.person, "ชื่อ-นามสกุล", false),
+          _buildTextField(_emailCtl, Icons.email, "อีเมล", false),
+          _buildTextField(_nameCtl, Icons.person, "ชื่อผู้ใช้", false),
           _buildTextField(_passwordCtl, Icons.lock, "รหัสผ่าน", true),
           _buildTextField(
               _confirmCtl, Icons.lock_outline, "ยืนยันรหัสผ่าน", true),
           _buildTextField(_plateCtl, Icons.credit_card, "ทะเบียนรถ", false),
+
           const SizedBox(height: 15),
+
           GestureDetector(
             onTap: _pickImage,
             child: Container(
@@ -150,7 +160,9 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
                     ),
             ),
           ),
+
           const SizedBox(height: 25),
+
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -192,28 +204,29 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
               ),
             ],
           ),
+
           const SizedBox(height: 20),
+
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text("หากเป็นสมาชิกอยู่แล้วกลับไปที่หน้า "),
               GestureDetector(
-                onTap: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => const LoginRiderPage()),
-                  );
-                },
+                onTap: () => Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginRiderPage()),
+                ),
                 child: const Text(
                   "เข้าสู่ระบบ",
                   style: TextStyle(
-                    color: Colors.lightGreen,
+                    color: Colors.green,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
             ],
           ),
+
           const Spacer(),
           Container(height: 40, width: double.infinity, color: Colors.green),
         ],
@@ -222,7 +235,11 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
   }
 
   Widget _buildTextField(
-      TextEditingController ctl, IconData icon, String hint, bool obscure) {
+    TextEditingController ctl,
+    IconData icon,
+    String hint,
+    bool obscure,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
       child: TextField(

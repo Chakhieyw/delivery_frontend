@@ -10,15 +10,16 @@ class LoginRiderPage extends StatefulWidget {
 }
 
 class _LoginRiderPageState extends State<LoginRiderPage> {
-  final _phoneCtl = TextEditingController();
-  final _passwordCtl = TextEditingController();
+  final _nameCtl = TextEditingController(); // 👉 ชื่อผู้ใช้
+  final _passwordCtl = TextEditingController(); // 👉 รหัสผ่าน
   bool _loading = false;
 
   Future<void> _login() async {
     setState(() => _loading = true);
 
     try {
-      final email = "${_phoneCtl.text}@delivery.com";
+      // ใช้ username สร้าง email ไว้ login
+      final email = "${_nameCtl.text.trim()}@delivery.com";
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: _passwordCtl.text,
@@ -52,6 +53,7 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
       backgroundColor: Colors.white,
       body: Column(
         children: [
+          // Header
           Container(
             height: 80,
             width: double.infinity,
@@ -66,6 +68,7 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
               ),
             ),
           ),
+
           const SizedBox(height: 30),
           const Text(
             "เข้าสู่ระบบ Rider",
@@ -75,15 +78,17 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
               color: Colors.green,
             ),
           ),
+
           const SizedBox(height: 30),
+
+          // ช่องกรอกชื่อผู้ใช้
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
             child: TextField(
-              controller: _phoneCtl,
-              keyboardType: TextInputType.phone,
+              controller: _nameCtl,
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.phone, color: Colors.green),
-                hintText: "เบอร์โทรศัพท์",
+                prefixIcon: const Icon(Icons.person, color: Colors.green),
+                hintText: "ชื่อผู้ใช้",
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 focusedBorder: OutlineInputBorder(
@@ -93,6 +98,8 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
               ),
             ),
           ),
+
+          // ช่องกรอกรหัสผ่าน
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
             child: TextField(
@@ -110,7 +117,10 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
               ),
             ),
           ),
+
           const SizedBox(height: 20),
+
+          // ปุ่มเข้าสู่ระบบ
           SizedBox(
             width: 200,
             height: 45,
@@ -127,7 +137,10 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
                   : const Text("เข้าสู่ระบบ"),
             ),
           ),
+
           const SizedBox(height: 20),
+
+          // ลิงก์ไปสมัคร
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -150,6 +163,7 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
               ),
             ],
           ),
+
           const Spacer(),
           Container(height: 40, width: double.infinity, color: Colors.green),
         ],
