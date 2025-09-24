@@ -1,3 +1,5 @@
+import 'package:delivery_frontend/page/login_user.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class DashboardRiderPage extends StatefulWidget {
@@ -16,6 +18,14 @@ class _DashboardRiderPageState extends State<DashboardRiderPage>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
   }
+    Future<void> _logout(BuildContext context) async {
+    await FirebaseAuth.instance.signOut();
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginUserPage()),
+      (route) => false, // เคลียร์ทุกหน้าออกจาก stack
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +35,13 @@ class _DashboardRiderPageState extends State<DashboardRiderPage>
         title: const Text("Delivery AppT&K",
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.green,
+         actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            tooltip: "ออกจากระบบ",
+            onPressed: () => _logout(context),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: const Color.fromARGB(255, 255, 255, 255),
