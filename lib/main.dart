@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_frontend/firebase_options.dart';
-import 'package:delivery_frontend/page/login_rider.dart';
 import 'package:delivery_frontend/page/select_role.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';

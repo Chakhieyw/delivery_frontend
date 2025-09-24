@@ -13,6 +13,7 @@ class RegisterUserPage extends StatefulWidget {
 }
 
 class _RegisterUserPageState extends State<RegisterUserPage> {
+  final _nameCtl = TextEditingController();
   final _phoneCtl = TextEditingController();
   final _passwordCtl = TextEditingController();
   final _confirmCtl = TextEditingController();
@@ -44,12 +45,13 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
       final email = "${_phoneCtl.text}@delivery.com";
 
       // สมัคร Firebase Auth
-      UserCredential user = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
+      UserCredential user =
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: _passwordCtl.text,
       );
 
+      // อัปโหลดรูปไป Storage
       String? imageUrl;
       if (_imageFile != null) {
         final ref = FirebaseStorage.instance
@@ -60,11 +62,12 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
         imageUrl = await ref.getDownloadURL();
       }
 
-      // เก็บข้อมูลใน Firestore
+      // เก็บข้อมูลลง Firestore
       await FirebaseFirestore.instance
           .collection("users")
           .doc(user.user!.uid)
           .set({
+        "name": _nameCtl.text,
         "phone": _phoneCtl.text,
         "address": _addressCtl.text,
         "role": "user",
@@ -90,7 +93,6 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-
       body: Column(
         children: [
           // Header
@@ -123,27 +125,34 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
           const SizedBox(height: 20),
 
           // ช่องกรอกข้อมูล
+          _buildTextField(_nameCtl, Icons.person, "ชื่อผู้ใช้", false),
           _buildTextField(_phoneCtl, Icons.phone, "เบอร์โทรศัพท์", false),
           _buildTextField(_passwordCtl, Icons.lock, "รหัสผ่าน", true),
-          _buildTextField(_confirmCtl, Icons.lock_outline, "ยืนยันรหัสผ่าน", true),
-          _buildTextField(_addressCtl, Icons.location_on, "ที่อยู่ (เพิ่มที่อยู่)", false),
+          _buildTextField(
+              _confirmCtl, Icons.lock_outline, "ยืนยันรหัสผ่าน", true),
+          _buildTextField(
+              _addressCtl, Icons.location_on, "ที่อยู่(เพิ่มที่อยู่)", false),
 
           const SizedBox(height: 10),
 
-          // ปุ่มเลือกรูปภาพ
-          OutlinedButton(
-            onPressed: _pickImage,
-            child: const Text("เลือกรูปภาพ"),
-          ),
-
-          if (_imageFile != null)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: CircleAvatar(
-                radius: 40,
-                backgroundImage: FileImage(_imageFile!),
+          // รูปโปรไฟล์ (กดเพื่อเลือก)
+          GestureDetector(
+            onTap: _pickImage,
+            child: Container(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.green),
+                borderRadius: BorderRadius.circular(6),
               ),
+              child: _imageFile != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.file(_imageFile!, fit: BoxFit.cover),
+                    )
+                  : const Icon(Icons.person, size: 50, color: Colors.green),
             ),
+          ),
 
           const SizedBox(height: 20),
 
@@ -218,19 +227,23 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
     );
   }
 
-  Widget _buildTextField(TextEditingController ctl, IconData icon, String hint, bool obscure) {
+  Widget _buildTextField(
+      TextEditingController ctl, IconData icon, String hint, bool obscure) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 6),
       child: TextField(
         controller: ctl,
         obscureText: obscure,
         decoration: InputDecoration(
           prefixIcon: Icon(icon, color: Colors.green),
           hintText: hint,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-          focusedBorder: OutlineInputBorder(
-            borderSide: const BorderSide(color: Colors.green),
+          border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(6),
+            borderSide: const BorderSide(color: Colors.green),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(6),
+            borderSide: const BorderSide(color: Colors.green, width: 2),
           ),
         ),
       ),
