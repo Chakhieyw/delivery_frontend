@@ -4,18 +4,22 @@ import 'package:delivery_frontend/page/select_role.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+   WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    debugPrint("✅ Firebase initialized successfully");
   } catch (e) {
-    debugPrint("Firebase init error: $e");
+    debugPrint("❌ Firebase init error: $e");
   }
+
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
   );
+
   runApp(const MyApp());
 }
 
