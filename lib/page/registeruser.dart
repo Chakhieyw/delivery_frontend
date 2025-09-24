@@ -106,6 +106,7 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
         "address": _addressCtl.text.trim(),
         "role": "user",
         "imageUrl": imageUrl ?? "",
+        "password": _passwordCtl.text.trim(),
         "createdAt": FieldValue.serverTimestamp(),
       });
 
