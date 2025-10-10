@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:delivery_frontend/page/login_user.dart';
 import 'package:delivery_frontend/page/MapPickerPage.dart';
+import 'package:delivery_frontend/services/cloudinary_service.dart';
 
 class RegisterUserPage extends StatefulWidget {
   const RegisterUserPage({super.key});
@@ -110,23 +111,16 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
       UserCredential user = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
 
-      String? imageUrl;
+      String imageUrl = "";
 
       if (_imageFile != null) {
+        final cloudinary = CloudinaryService();
         try {
-          final ref = FirebaseStorage.instance
-              .ref()
-              .child("user_images/${user.user!.uid}.jpg");
-          await ref.putFile(_imageFile!);
-          imageUrl = await ref.getDownloadURL();
+          imageUrl = await cloudinary.uploadFile(_imageFile!);
+          debugPrint("✅ อัปโหลดขึ้น Cloudinary สำเร็จ: $imageUrl");
         } catch (e) {
-          debugPrint("🔥 Upload error: $e");
-          imageUrl = null;
+          debugPrint("❌ อัปโหลดรูปไป Cloudinary ล้มเหลว: $e");
         }
-      } else {
-        // 🔹 ถ้าไม่มีรูป ให้ใช้ภาพโปรไฟล์เริ่มต้นจาก URL หรือ assets
-        imageUrl =
-            "https://firebasestorage.googleapis.com/v0/b/YOUR_PROJECT_ID.appspot.com/o/defaults%2Fdefault_user.png?alt=media";
       }
 
       await FirebaseFirestore.instance
@@ -138,7 +132,7 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
         "phone": _phoneCtl.text.trim(),
         "address": _addressCtl.text.trim(),
         "role": "user",
-        "imageUrl": imageUrl ?? "",
+        "imageUrl": imageUrl,
         "password": _passwordCtl.text.trim(),
         "location": {
           "lat": _selectedPosition?.latitude,

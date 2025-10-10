@@ -11,7 +11,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // ✅ โหลดค่าจากไฟล์ .env (ก่อน init Firebase)
-  await dotenv.load(fileName: ".env");
+  await dotenv.load(fileName: "assets/.env");
+  print("🌍 Cloud name: ${dotenv.env['CLOUDINARY_CLOUD_NAME']}");
 
   try {
     await Firebase.initializeApp(
