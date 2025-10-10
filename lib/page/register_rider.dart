@@ -5,17 +5,21 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+<<<<<<< Updated upstream
 
 import 'login_rider.dart';
+=======
+import 'package:image_picker/image_picker.dart';
+>>>>>>> Stashed changes
 
 class RegisterRiderPage extends StatefulWidget {
   const RegisterRiderPage({super.key});
 
   @override
-  State<RegisterRiderPage> createState() => _RegisterRiderPageState();
+  State<RegisterRiderPage> createState() => _RegisterPageState();
 }
 
-class _RegisterRiderPageState extends State<RegisterRiderPage> {
+class _RegisterPageState extends State<RegisterRiderPage> {
   final _phoneCtl = TextEditingController();
   final _emailCtl = TextEditingController();
   final _nameCtl = TextEditingController();
@@ -59,8 +63,16 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
     setState(() => _loading = true);
 
     try {
+<<<<<<< Updated upstream
       final email = _emailCtl.text.trim();
       final password = _passwordCtl.text.trim();
+=======
+      UserCredential user =
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: _emailCtl.text,
+        password: _passwordCtl.text,
+      );
+>>>>>>> Stashed changes
 
       // ✅ สมัคร Firebase Auth
       UserCredential user = await FirebaseAuth.instance
@@ -71,6 +83,7 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
       // ✅ อัปโหลดรูปไป Firebase Storage
       String imageUrl = "";
       if (_imageFile != null) {
+<<<<<<< Updated upstream
         try {
           final ref = FirebaseStorage.instance
               .ref()
@@ -89,24 +102,41 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
         } catch (e) {
           debugPrint("🔥 Upload Error: $e");
         }
+=======
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child("user_images")
+            .child("${user.user!.uid}.jpg");
+        await ref.putFile(_imageFile!);
+        imageUrl = await ref.getDownloadURL();
+>>>>>>> Stashed changes
       }
 
       // ✅ บันทึกข้อมูลลง Firestore
       await FirebaseFirestore.instance
-          .collection("riders")
+          .collection("users")
           .doc(user.user!.uid)
           .set({
+<<<<<<< Updated upstream
         "phone": _phoneCtl.text.trim(),
         "email": email,
         "name": _nameCtl.text.trim(),
         "plate": _plateCtl.text.trim(),
         "role": "rider",
         "imageUrl": imageUrl,
+=======
+        "phone": _phoneCtl.text,
+        "email": _emailCtl.text,
+        "name": _nameCtl.text,
+        "plate": _plateCtl.text,
+        "imageUrl": imageUrl ?? "",
+>>>>>>> Stashed changes
         "createdAt": FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
+<<<<<<< Updated upstream
         const SnackBar(content: Text("✅ ลงทะเบียน Rider สำเร็จ")),
       );
 
@@ -123,6 +153,12 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
       }
       debugPrint("🔥 FirebaseAuth Error: ${e.code}");
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+=======
+        const SnackBar(content: Text("✅ สมัครสมาชิกสำเร็จ")),
+      );
+
+      Navigator.pushReplacementNamed(context, "/loginUser");
+>>>>>>> Stashed changes
     } catch (e) {
       debugPrint("🔥 Error ตอนสมัคร: $e");
       ScaffoldMessenger.of(context).showSnackBar(
@@ -137,6 +173,7 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+<<<<<<< Updated upstream
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
@@ -155,6 +192,102 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+=======
+      body: Column(
+        children: [
+          Container(
+            height: 80,
+            width: double.infinity,
+            color: Colors.green,
+            alignment: Alignment.center,
+            child: const Text(
+              "Delivery AppT&K",
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text("สมัครสมาชิก",
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green)),
+          const SizedBox(height: 20),
+          _buildTextField(_phoneCtl, Icons.phone, "เบอร์โทรศัพท์", false),
+          _buildTextField(_emailCtl, Icons.email, "อีเมล", false),
+          _buildTextField(_nameCtl, Icons.person, "ชื่อผู้ใช้", false),
+          _buildTextField(_passwordCtl, Icons.lock, "รหัสผ่าน", true),
+          _buildTextField(
+              _confirmCtl, Icons.lock_outline, "ยืนยันรหัสผ่าน", true),
+          _buildTextField(_plateCtl, Icons.credit_card, "ทะเบียนรถ", false),
+          const SizedBox(height: 15),
+          GestureDetector(
+            onTap: _pickImage,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.green, width: 2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: _imageFile != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.file(_imageFile!, fit: BoxFit.cover),
+                    )
+                  : const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person, size: 50, color: Colors.green),
+                        Text("เลือกรูปภาพ",
+                            style: TextStyle(color: Colors.green)),
+                      ],
+                    ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 140,
+                height: 45,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _register,
+                  style:
+                      ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  child: _loading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("สมัครสมาชิก"),
+                ),
+              ),
+              const SizedBox(width: 15),
+              SizedBox(
+                width: 120,
+                height: 45,
+                child: ElevatedButton(
+                  onPressed: () =>
+                      Navigator.pushReplacementNamed(context, "/loginUser"),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
+                  child: const Text("ยกเลิก"),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text("หากเป็นสมาชิกอยู่แล้วกลับไปที่หน้า "),
+              GestureDetector(
+                onTap: () =>
+                    Navigator.pushReplacementNamed(context, "/loginUser"),
+                child: const Text("เข้าสู่ระบบ",
+                    style: TextStyle(
+                        color: Colors.green, fontWeight: FontWeight.bold)),
+>>>>>>> Stashed changes
               ),
 
               const SizedBox(height: 20),
