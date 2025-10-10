@@ -1,6 +1,7 @@
 import 'package:delivery_frontend/page/login_user.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:delivery_frontend/page/profile_rider.dart';
 
 class DashboardRiderPage extends StatefulWidget {
   const DashboardRiderPage({super.key});
@@ -18,7 +19,8 @@ class _DashboardRiderPageState extends State<DashboardRiderPage>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
   }
-    Future<void> _logout(BuildContext context) async {
+
+  Future<void> _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
     Navigator.pushAndRemoveUntil(
       context,
@@ -35,7 +37,7 @@ class _DashboardRiderPageState extends State<DashboardRiderPage>
         title: const Text("Delivery AppT&K",
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.green,
-         actions: [
+        actions: [
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: "ออกจากระบบ",
@@ -61,7 +63,7 @@ class _DashboardRiderPageState extends State<DashboardRiderPage>
           _buildWaitingOrders(),
           const Center(child: Text("🚚 อยู่ระหว่างจัดส่ง")),
           const Center(child: Text("📜 ประวัติการจัดส่ง")),
-          const Center(child: Text("👤 โปรไฟล์ผู้ใช้")),
+          const RiderProfilePage(),
         ],
       ),
     );
