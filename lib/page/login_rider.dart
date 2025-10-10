@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-<<<<<<< Updated upstream
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'register_rider.dart';
 import 'dashboard_rider.dart';
 import 'select_role.dart'; // ✅ เพิ่ม import
-=======
->>>>>>> Stashed changes
 
 class LoginRiderPage extends StatefulWidget {
   const LoginRiderPage({super.key});
@@ -22,8 +19,8 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
 
   Future<void> _login() async {
     setState(() => _loading = true);
+
     try {
-<<<<<<< Updated upstream
       final snapshot = await FirebaseFirestore.instance
           .collection("riders")
           .where("name", isEqualTo: _nameCtl.text.trim())
@@ -41,16 +38,12 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
       final riderData = snapshot.docs.first.data();
       final email = riderData["email"];
 
-=======
-      final email = "${_nameCtl.text.trim()}@delivery.com";
->>>>>>> Stashed changes
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: _passwordCtl.text,
       );
 
       if (!mounted) return;
-<<<<<<< Updated upstream
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("✅ เข้าสู่ระบบสำเร็จ: ${riderData["name"]}")),
@@ -64,35 +57,14 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
       String message = "เข้าสู่ระบบไม่สำเร็จ";
       if (e.code == 'wrong-password') message = "❌ รหัสผ่านไม่ถูกต้อง";
       if (e.code == 'user-not-found') message = "❌ ไม่พบผู้ใช้";
-=======
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("เข้าสู่ระบบสำเร็จ ✅")),
-      );
-
-      // ไปหน้า Dashboard ของ Rider (ตั้ง route ไว้ใน MaterialApp)
-      Navigator.pushReplacementNamed(context, "/riderDashboard");
-    } on FirebaseAuthException catch (e) {
-      String message = "เข้าสู่ระบบไม่สำเร็จ";
-      if (e.code == 'user-not-found') message = "ไม่พบบัญชีผู้ใช้";
-      if (e.code == 'wrong-password') message = "รหัสผ่านไม่ถูกต้อง";
-      if (!mounted) return;
->>>>>>> Stashed changes
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text("Error: $e")));
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
-  }
 
-  @override
-  void dispose() {
-    _nameCtl.dispose();
-    _passwordCtl.dispose();
-    super.dispose();
+    setState(() => _loading = false);
   }
 
   @override
@@ -101,7 +73,6 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          // Header
           Container(
             height: 80,
             width: double.infinity,
@@ -116,10 +87,9 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
               ),
             ),
           ),
-
           const SizedBox(height: 30),
           const Text(
-            "เข้าสู่ระบบ",
+            "เข้าสู่ระบบ Rider",
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -128,7 +98,6 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
           ),
           const SizedBox(height: 30),
 
-<<<<<<< Updated upstream
           // ชื่อผู้ใช้
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
@@ -167,10 +136,6 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
               ),
             ),
           ),
-=======
-          _buildTextField(_nameCtl, Icons.person, "ชื่อผู้ใช้", false),
-          _buildTextField(_passwordCtl, Icons.lock, "รหัสผ่าน", true),
->>>>>>> Stashed changes
 
           const SizedBox(height: 20),
 
@@ -180,7 +145,12 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
             height: 45,
             child: ElevatedButton(
               onPressed: _loading ? null : _login,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
               child: _loading
                   ? const CircularProgressIndicator(color: Colors.white)
                   : const Text("เข้าสู่ระบบ"),
@@ -193,10 +163,15 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text("หากยังไม่มีบัญชี "),
+              const Text("หากยังไม่มีบัญชี Rider "),
               GestureDetector(
-                onTap: () =>
-                    Navigator.pushReplacementNamed(context, "/registerRider"),
+                onTap: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const RegisterRiderPage()),
+                  );
+                },
                 child: const Text(
                   "สมัครสมาชิก",
                   style: TextStyle(
@@ -208,7 +183,6 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
             ],
           ),
 
-<<<<<<< Updated upstream
           const SizedBox(height: 15),
 
           // ✅ ปุ่มกลับไป select_role
@@ -225,35 +199,9 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
             ),
           ),
 
-=======
->>>>>>> Stashed changes
           const Spacer(),
           Container(height: 40, width: double.infinity, color: Colors.green),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTextField(
-    TextEditingController ctl,
-    IconData icon,
-    String hint,
-    bool obscure,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
-      child: TextField(
-        controller: ctl,
-        obscureText: obscure,
-        decoration: InputDecoration(
-          prefixIcon: Icon(icon, color: Colors.green),
-          hintText: hint,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-          focusedBorder: OutlineInputBorder(
-            borderSide: const BorderSide(color: Colors.green),
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
       ),
     );
   }
