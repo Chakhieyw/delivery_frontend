@@ -11,6 +11,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:delivery_frontend/page/login_user.dart';
 import 'package:delivery_frontend/page/MapPickerPage.dart';
 import 'package:delivery_frontend/services/cloudinary_service.dart';
+import 'package:geocoding/geocoding.dart';
 
 class RegisterUserPage extends StatefulWidget {
   const RegisterUserPage({super.key});
@@ -39,6 +40,49 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
     if (picked != null) setState(() => _imageFile = File(picked.path));
   }
 
+  Future<void> _getAddressFromLatLng(LatLng? position) async {
+    if (position == null) return;
+
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+
+        // ✅ ป้องกัน null อย่างสมบูรณ์
+        final String street = (place.street != null && place.street!.isNotEmpty)
+            ? place.street!
+            : (place.subLocality?.isNotEmpty ?? false)
+                ? place.subLocality!
+                : (place.locality?.isNotEmpty ?? false)
+                    ? place.locality!
+                    : '';
+
+        final String city = place.subAdministrativeArea ?? '';
+        final String province = place.administrativeArea ?? '';
+        final String country = place.country ?? '';
+
+        final formattedAddress = [street, city, province, country]
+            .where((e) => e.isNotEmpty)
+            .join(', ');
+
+        setState(() {
+          _addressCtl.text = formattedAddress;
+        });
+
+        debugPrint("📍 แปลงพิกัดเป็นที่อยู่: $formattedAddress");
+      } else {
+        _addressCtl.text = "ไม่พบข้อมูลที่อยู่";
+      }
+    } catch (e) {
+      debugPrint("❌ แปลงพิกัดล้มเหลว: $e");
+      _addressCtl.text = "ไม่สามารถดึงที่อยู่ได้";
+    }
+  }
+
   /// ✅ ดึงตำแหน่งปัจจุบัน
   Future<void> _getCurrentLocation() async {
     try {
@@ -58,6 +102,7 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
       setState(() {
         _selectedPosition = LatLng(pos.latitude, pos.longitude);
       });
+      await _getAddressFromLatLng(_selectedPosition);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -78,8 +123,9 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
       MaterialPageRoute(
         builder: (_) => MapPickerPage(
           apiKey: _apiKey,
-          onPositionSelected: (pos) {
+          onPositionSelected: (pos) async {
             setState(() => _selectedPosition = pos);
+            await _getAddressFromLatLng(pos);
           },
         ),
       ),
