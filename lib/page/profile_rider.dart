@@ -1,3 +1,4 @@
+import 'package:delivery_frontend/page/edit_profile_rider.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -131,7 +132,11 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                     // 🔹 ปุ่มแก้ไขข้อมูล
                     TextButton.icon(
                       onPressed: () {
-                        // TODO: ไปหน้าแก้ไขโปรไฟล์
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const EditProfileRiderPage()),
+                        );
                       },
                       icon: const Icon(Icons.edit, color: Colors.green),
                       label: const Text(
