@@ -1,6 +1,8 @@
+import 'package:delivery_frontend/page/edit_profile_rider.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart'; // 👈 สำหรับกรณี imageUrl เป็น path
 
 class RiderProfilePage extends StatefulWidget {
   const RiderProfilePage({super.key});
@@ -24,22 +26,72 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
     fetchRiderData();
   }
 
+  /// แปลง path -> URL (ในกรณีที่ Firestore เก็บเป็น path)
+  Future<String?> _normalizeImageUrl(String? raw) async {
+    if (raw == null) return null;
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+    if (s.startsWith('http')) return s;
+    try {
+      final ref = FirebaseStorage.instance.ref(s);
+      return await ref.getDownloadURL();
+    } catch (e) {
+      debugPrint('❌ Error getDownloadURL: $e');
+      return null;
+    }
+  }
+
   Future<void> fetchRiderData() async {
     final user = _auth.currentUser;
     if (user == null) return;
 
     try {
-      final doc = await _firestore.collection('riders').doc(user.uid).get();
-      if (doc.exists) {
-        setState(() {
-          name = doc['name'];
-          phone = doc['phone'];
-          plate = doc['plate'];
-          imageUrl = doc['imageUrl'];
-        });
-      }
+      final snap = await _firestore.collection('riders').doc(user.uid).get();
+      if (!snap.exists) return;
+
+      final data = snap.data() ?? {};
+      final rawImage = (data['imageUrl'] ??
+          data['photo'] ??
+          data['profileImage']) as String?;
+
+      final normalizedUrl = await _normalizeImageUrl(rawImage);
+
+      setState(() {
+        name = (data['name'] as String?)?.trim();
+        phone = (data['phone'] as String?)?.trim();
+        plate = (data['plate'] as String?)?.trim();
+        imageUrl = normalizedUrl;
+      });
+
+      debugPrint("🖼 imageUrl(final): $imageUrl");
     } catch (e) {
-      print("Error fetching rider data: $e");
+      debugPrint("⚠️ Error fetching rider data: $e");
+    }
+  }
+
+  /// วิดเจ็ตแสดงรูปโปรไฟล์ ป้องกัน crash
+  Widget _buildAvatar() {
+    final bool hasImage = imageUrl != null && imageUrl!.isNotEmpty;
+
+    if (hasImage) {
+      // ✅ มีรูปภาพ
+      return CircleAvatar(
+        key: ValueKey(imageUrl),
+        radius: 50,
+        backgroundColor: const Color(0xFF4CAF50),
+        backgroundImage: NetworkImage(imageUrl!),
+        onBackgroundImageError: (error, stackTrace) {
+          debugPrint("⚠️ โหลดรูปไม่ได้: $error");
+          if (mounted) setState(() => imageUrl = null);
+        },
+      );
+    } else {
+      // ✅ ไม่มีรูปภาพ
+      return const CircleAvatar(
+        radius: 50,
+        backgroundColor: Color(0xFF4CAF50),
+        child: Icon(Icons.person, color: Colors.white, size: 60),
+      );
     }
   }
 
@@ -71,17 +123,7 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                 child: Column(
                   children: [
                     // 🔹 รูปโปรไฟล์
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: const Color(0xFF4CAF50),
-                      backgroundImage: imageUrl != null && imageUrl!.isNotEmpty
-                          ? NetworkImage(imageUrl!)
-                          : null,
-                      child: imageUrl == null || imageUrl!.isEmpty
-                          ? const Icon(Icons.person,
-                              size: 60, color: Colors.white)
-                          : null,
-                    ),
+                    _buildAvatar(),
                     const SizedBox(height: 15),
                     // 🔹 ชื่อ
                     Text(
@@ -131,7 +173,11 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                     // 🔹 ปุ่มแก้ไขข้อมูล
                     TextButton.icon(
                       onPressed: () {
-                        // TODO: ไปหน้าแก้ไขโปรไฟล์
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const EditProfileRiderPage()),
+                        );
                       },
                       icon: const Icon(Icons.edit, color: Colors.green),
                       label: const Text(
