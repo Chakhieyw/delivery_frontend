@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'edit_profile_rider.dart'; // ✅ ต้อง import เพื่อให้เปิดได้
+import 'edit_profile_rider.dart';
 
 class RiderProfilePage extends StatefulWidget {
   const RiderProfilePage({super.key});
@@ -72,7 +72,6 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
         child: Center(
           child: Column(
             children: [
-              // 🔹 Card หลักของข้อมูล
               Container(
                 width: double.infinity,
                 padding:
@@ -103,8 +102,6 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                           : null,
                     ),
                     const SizedBox(height: 15),
-
-                    // 🔹 ชื่อ
                     Text(
                       name ?? 'ไม่ระบุชื่อ',
                       style: const TextStyle(
@@ -114,16 +111,12 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-
-                    // 🔹 เส้นคั่น
                     Container(
                       width: 60,
                       height: 2,
                       color: const Color(0xFF4CAF50),
                     ),
                     const SizedBox(height: 15),
-
-                    // 🔹 เบอร์โทร
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -139,8 +132,6 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                       ],
                     ),
                     const SizedBox(height: 10),
-
-                    // 🔹 ทะเบียนรถ
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -156,20 +147,15 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                       ],
                     ),
                     const SizedBox(height: 25),
-
-                    // 🔹 ปุ่มแก้ไขข้อมูล
                     TextButton.icon(
                       onPressed: () async {
-                        // ✅ เปิดหน้าแก้ไขโปรไฟล์
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const EditProfileRiderPage(),
                           ),
                         );
-
-                        // ✅ เมื่อกลับมาหน้านี้ ให้โหลดข้อมูลใหม่
-                        fetchRiderData();
+                        fetchRiderData(); // รีเฟรชหลังกลับมา
                       },
                       icon: const Icon(Icons.edit, color: Colors.green),
                       label: const Text(
@@ -182,8 +168,6 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                 ),
               ),
               const SizedBox(height: 30),
-
-              // 🔹 Footer Text
               const Text(
                 "Delivery AppT&K © 2025",
                 style: TextStyle(fontSize: 12, color: Colors.grey),

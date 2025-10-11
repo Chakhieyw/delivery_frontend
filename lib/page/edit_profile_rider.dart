@@ -1,9 +1,10 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class EditProfileRiderPage extends StatefulWidget {
   const EditProfileRiderPage({super.key});
@@ -13,228 +14,118 @@ class EditProfileRiderPage extends StatefulWidget {
 }
 
 class _EditProfileRiderPageState extends State<EditProfileRiderPage> {
-  final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance;
-  final _storage = FirebaseStorage.instance;
-  final _picker = ImagePicker();
+  File? _imageFile;
+  bool _loading = false;
+  final picker = ImagePicker();
 
-  final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _plateController = TextEditingController();
+  // ✅ กำหนดค่าของ Cloudinary
+  final String cloudName = "YOUR_CLOUD_NAME"; // 🔹 ใส่ cloud name จริง
+  final String uploadPreset = "delivery_unsigned"; // 🔹 ใส่ preset ที่สร้างไว้
 
-  String? _imageUrl;
-  File? _selectedImage;
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    fetchRiderData();
-  }
-
-  Future<void> fetchRiderData() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-    try {
-      final doc = await _firestore.collection('riders').doc(user.uid).get();
-      if (doc.exists) {
-        final data = doc.data()!;
-        _nameController.text = data['name'] ?? '';
-        _phoneController.text = data['phone'] ?? '';
-        _plateController.text = data['plate'] ?? '';
-        _imageUrl = data['imageUrl'];
-        setState(() {});
-      }
-    } catch (e) {
-      debugPrint("⚠️ Error loading data: $e");
+  // ✅ เลือกรูปจากคลังภาพ
+  Future<void> _pickImage() async {
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() => _imageFile = File(pickedFile.path));
     }
   }
 
-  Future<void> pickImage() async {
-    final picked =
-        await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
-    if (picked != null) {
-      setState(() => _selectedImage = File(picked.path));
-    }
-  }
-
-  Future<void> saveProfile() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    if (_nameController.text.isEmpty ||
-        _phoneController.text.isEmpty ||
-        _plateController.text.isEmpty) {
+  // ✅ อัปโหลดรูปขึ้น Cloudinary และบันทึก Firestore
+  Future<void> _uploadToCloudinary() async {
+    if (_imageFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("⚠️ กรุณากรอกข้อมูลให้ครบถ้วน")));
+        const SnackBar(content: Text("กรุณาเลือกรูปก่อน")),
+      );
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() => _loading = true);
 
     try {
-      String? imageUrl = _imageUrl;
+      final url =
+          Uri.parse("https://api.cloudinary.com/v1_1/$cloudName/image/upload");
 
-      // 📤 อัปโหลดรูปใหม่ถ้ามีการเลือก
-      if (_selectedImage != null) {
-        final ref = _storage.ref().child('profile/${user.uid}.jpg');
-        await ref.putFile(_selectedImage!);
-        imageUrl = await ref.getDownloadURL();
+      final request = http.MultipartRequest('POST', url)
+        ..fields['upload_preset'] = uploadPreset
+        ..files
+            .add(await http.MultipartFile.fromPath('file', _imageFile!.path));
+
+      final response = await request.send();
+      final res = await http.Response.fromStream(response);
+      final data = json.decode(res.body);
+
+      if (response.statusCode == 200) {
+        final imageUrl = data['secure_url'];
+
+        // ✅ บันทึก URL ลง Firestore
+        await FirebaseFirestore.instance
+            .collection('riders')
+            .doc(FirebaseAuth.instance.currentUser!.uid)
+            .update({'imageUrl': imageUrl});
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("อัปโหลดสำเร็จ ✅")),
+        );
+
+        Navigator.pop(context); // 🔹 กลับไปหน้าโปรไฟล์
+      } else {
+        debugPrint("❌ Upload failed: ${res.body}");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("อัปโหลดไม่สำเร็จ ❌")),
+        );
       }
-
-      // 📝 อัปเดต Firestore
-      await _firestore.collection('riders').doc(user.uid).update({
-        'name': _nameController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'plate': _plateController.text.trim(),
-        'imageUrl': imageUrl ?? '',
-      });
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("✅ บันทึกข้อมูลสำเร็จ")));
-
-      Navigator.pop(context); // กลับไปหน้าโปรไฟล์
     } catch (e) {
-      debugPrint("❌ Error saving data: $e");
+      debugPrint("❌ Error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล")));
-    } finally {
-      setState(() => _isLoading = false);
+        SnackBar(content: Text("เกิดข้อผิดพลาด: $e")),
+      );
     }
+
+    setState(() => _loading = false);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F5),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF4CAF50),
-        title: const Text(
-          "แก้ไขข้อมูลไรเดอร์",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
+        title: const Text("แก้ไขโปรไฟล์ไรเดอร์"),
+        backgroundColor: Colors.green,
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
+      body: Padding(
         padding: const EdgeInsets.all(20),
-        child: Center(
-          child: Column(
-            children: [
-              const SizedBox(height: 10),
-              // 🔹 รูปโปรไฟล์
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 55,
-                    backgroundColor: const Color(0xFF4CAF50),
-                    backgroundImage: _selectedImage != null
-                        ? FileImage(_selectedImage!)
-                        : (_imageUrl != null && _imageUrl!.isNotEmpty)
-                            ? NetworkImage(_imageUrl!) as ImageProvider
-                            : null,
-                    child: (_selectedImage == null &&
-                            (_imageUrl == null || _imageUrl!.isEmpty))
-                        ? const Icon(Icons.person,
-                            size: 60, color: Colors.white)
-                        : null,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _imageFile != null
+                ? CircleAvatar(
+                    radius: 70, backgroundImage: FileImage(_imageFile!))
+                : const CircleAvatar(
+                    radius: 70,
+                    backgroundColor: Colors.grey,
+                    child: Icon(Icons.person, size: 70, color: Colors.white),
                   ),
-                  Positioned(
-                    bottom: 0,
-                    right: 4,
-                    child: GestureDetector(
-                      onTap: pickImage,
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.camera_alt,
-                            color: Colors.green, size: 22),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 25),
-
-              // 🔹 ช่องชื่อ
-              TextField(
-                controller: _nameController,
-                decoration:
-                    _inputDecoration(Icons.person_outline, "ชื่อ–นามสกุล"),
-              ),
-              const SizedBox(height: 15),
-
-              // 🔹 ช่องเบอร์โทรศัพท์
-              TextField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: _inputDecoration(Icons.phone, "เบอร์โทรศัพท์"),
-              ),
-              const SizedBox(height: 15),
-
-              // 🔹 ช่องทะเบียนรถ
-              TextField(
-                controller: _plateController,
-                decoration: _inputDecoration(Icons.motorcycle, "ทะเบียนรถ"),
-              ),
-              const SizedBox(height: 30),
-
-              // 🔹 ปุ่มบันทึก / กลับ
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
+            const SizedBox(height: 25),
+            ElevatedButton.icon(
+              onPressed: _pickImage,
+              icon: const Icon(Icons.photo_library),
+              label: const Text("เลือกรูปจากเครื่อง"),
+            ),
+            const SizedBox(height: 20),
+            _loading
+                ? const CircularProgressIndicator()
+                : ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      minimumSize: const Size(130, 45),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                        backgroundColor: Colors.green.shade600),
+                    onPressed: _uploadToCloudinary,
+                    icon: const Icon(Icons.cloud_upload, color: Colors.white),
+                    label: const Text(
+                      "อัปโหลดขึ้น Cloudinary",
+                      style: TextStyle(color: Colors.white),
                     ),
-                    child: const Text("กลับ",
-                        style: TextStyle(color: Colors.white)),
                   ),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : saveProfile,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      minimumSize: const Size(130, 45),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Text("บันทึกข้อมูล",
-                            style: TextStyle(color: Colors.white)),
-                  ),
-                ],
-              ),
-            ],
-          ),
+          ],
         ),
-      ),
-    );
-  }
-
-  InputDecoration _inputDecoration(IconData icon, String hint) {
-    return InputDecoration(
-      prefixIcon: Icon(icon, color: Colors.green),
-      hintText: hint,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      enabledBorder: OutlineInputBorder(
-        borderSide: const BorderSide(color: Colors.green, width: 1.3),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderSide: const BorderSide(color: Colors.green, width: 1.5),
-        borderRadius: BorderRadius.circular(10),
       ),
     );
   }
