@@ -77,6 +77,7 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
     final bool hasImage = imageUrl != null && imageUrl!.isNotEmpty;
 
     if (hasImage) {
+      // ✅ มีรูปภาพ
       return CircleAvatar(
         key: ValueKey(imageUrl),
         radius: 50,
@@ -88,6 +89,7 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
         },
       );
     } else {
+      // ✅ ไม่มีรูปภาพ
       return const CircleAvatar(
         radius: 50,
         backgroundColor: Color(0xFF4CAF50),
