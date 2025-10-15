@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'edit_profile_rider.dart';
 
 class RiderProfilePage extends StatefulWidget {
   const RiderProfilePage({super.key});
@@ -17,6 +18,7 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
   String? phone;
   String? plate;
   String? imageUrl;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -32,27 +34,44 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
       final doc = await _firestore.collection('riders').doc(user.uid).get();
       if (doc.exists) {
         setState(() {
-          name = doc['name'];
-          phone = doc['phone'];
-          plate = doc['plate'];
-          imageUrl = doc['imageUrl'];
+          name = doc['name'] ?? '';
+          phone = doc['phone'] ?? '';
+          plate = doc['plate'] ?? '';
+          imageUrl = doc['imageUrl'] ?? '';
+          _isLoading = false;
         });
+      } else {
+        setState(() => _isLoading = false);
       }
     } catch (e) {
-      print("Error fetching rider data: $e");
+      debugPrint("❌ Error fetching rider data: $e");
+      setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F5),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF4CAF50),
+        title: const Text(
+          "โปรไฟล์ไรเดอร์",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
         child: Center(
           child: Column(
             children: [
-              // 🔹 Card หลักของข้อมูล
               Container(
                 width: double.infinity,
                 padding:
@@ -83,9 +102,8 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                           : null,
                     ),
                     const SizedBox(height: 15),
-                    // 🔹 ชื่อ
                     Text(
-                      name ?? 'กำลังโหลด...',
+                      name ?? 'ไม่ระบุชื่อ',
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -93,14 +111,12 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // 🔹 เส้นคั่น
                     Container(
                       width: 60,
                       height: 2,
                       color: const Color(0xFF4CAF50),
                     ),
                     const SizedBox(height: 15),
-                    // 🔹 เบอร์โทร
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -109,12 +125,13 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                         Text(
                           phone ?? '-',
                           style: const TextStyle(
-                              fontSize: 16, color: Colors.black87),
+                            fontSize: 16,
+                            color: Colors.black87,
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    // 🔹 ทะเบียนรถ
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -123,15 +140,22 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                         Text(
                           plate ?? '-',
                           style: const TextStyle(
-                              fontSize: 16, color: Colors.black87),
+                            fontSize: 16,
+                            color: Colors.black87,
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 25),
-                    // 🔹 ปุ่มแก้ไขข้อมูล
                     TextButton.icon(
-                      onPressed: () {
-                        // TODO: ไปหน้าแก้ไขโปรไฟล์
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const EditProfileRiderPage(),
+                          ),
+                        );
+                        fetchRiderData(); // รีเฟรชหลังกลับมา
                       },
                       icon: const Icon(Icons.edit, color: Colors.green),
                       label: const Text(
@@ -144,7 +168,6 @@ class _RiderProfilePageState extends State<RiderProfilePage> {
                 ),
               ),
               const SizedBox(height: 30),
-              // 🔹 Footer Text
               const Text(
                 "Delivery AppT&K © 2025",
                 style: TextStyle(fontSize: 12, color: Colors.grey),
