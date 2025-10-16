@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 
 // ✅ เพิ่ม import สำหรับ dotenv
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  // ✅ โหลด locale ภาษาไทยให้ DateFormat ใช้ได้
+  await initializeDateFormatting('th', null);
   // ✅ โหลดค่าจากไฟล์ .env (ก่อน init Firebase)
   await dotenv.load(fileName: "assets/.env");
   print("🌍 Cloud name: ${dotenv.env['CLOUDINARY_CLOUD_NAME']}");
@@ -18,7 +20,7 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    debugPrint("✅ Firebase initialized successfully"); 
+    debugPrint("✅ Firebase initialized successfully");
   } catch (e) {
     debugPrint("❌ Firebase init error: $e");
   }
