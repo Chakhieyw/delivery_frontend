@@ -3,7 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HomeTab extends StatelessWidget {
-  const HomeTab({super.key});
+  final Function(String orderId)? onTrackPressed; // ✅ callback กลับไป Dashboard
+  const HomeTab({super.key, required this.onTrackPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -13,7 +14,7 @@ class HomeTab extends StatelessWidget {
       return const Center(child: Text("กรุณาเข้าสู่ระบบใหม่อีกครั้ง"));
     }
 
-    // ✅ ดึงข้อมูลจาก collection 'deliveryRecords'
+    // ✅ ดึงข้อมูลออเดอร์จาก Firestore (เรียลไทม์)
     final orderStream = FirebaseFirestore.instance
         .collection('deliveryRecords')
         .where('userId', isEqualTo: user.uid)
@@ -44,16 +45,18 @@ class HomeTab extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             itemCount: orders.length,
             itemBuilder: (context, index) {
-              final order = orders[index].data() as Map<String, dynamic>;
-              final pickup = order['pickupAddress'] ?? '-';
-              final drop = order['dropAddress'] ?? '-';
-              final price = order['price']?.toString() ?? '0';
-              final status = order['status'] ?? 'รอไรเดอร์รับงาน';
-              final createdAt = (order['createdAt'] as Timestamp?)?.toDate();
+              final doc = orders[index];
+              final pickup = doc['pickupAddress'] ?? '-';
+              final drop = doc['dropAddress'] ?? '-';
+              final price = doc['price']?.toString() ?? '0';
+              final status = doc['status'] ?? 'รอไรเดอร์รับสินค้า';
+              final createdAt = (doc['createdAt'] as Timestamp?)?.toDate();
               final orderNumber = '#Orders-${index + 1}';
+              final orderId = doc.id;
 
               return _buildOrderCard(
                 context: context,
+                orderId: orderId,
                 orderNumber: orderNumber,
                 pickup: pickup,
                 drop: drop,
@@ -68,8 +71,10 @@ class HomeTab extends StatelessWidget {
     );
   }
 
+  // 🧩 UI การ์ดออเดอร์
   Widget _buildOrderCard({
     required BuildContext context,
+    required String orderId,
     required String orderNumber,
     required String pickup,
     required String drop,
@@ -122,9 +127,10 @@ class HomeTab extends StatelessWidget {
               Text(
                 "ออเดอร์ $orderNumber",
                 style: const TextStyle(
-                    color: Colors.green,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold),
+                  color: Colors.green,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               Container(
                 padding:
@@ -133,8 +139,10 @@ class HomeTab extends StatelessWidget {
                   color: statusColor.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text(status,
-                    style: TextStyle(color: statusColor, fontSize: 12)),
+                child: Text(
+                  status,
+                  style: TextStyle(color: statusColor, fontSize: 12),
+                ),
               ),
             ],
           ),
@@ -193,25 +201,24 @@ class HomeTab extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // 🔹 ราคา + ปุ่ม
+          // 🔹 ราคา + ปุ่มติดตาม
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("฿$price",
-                  style: const TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18)),
+              Text(
+                "฿$price",
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
               ElevatedButton(
                 onPressed: status == "ส่งสำเร็จ"
                     ? null
                     : () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("ระบบติดตามจะมีในเวอร์ชันถัดไป 😄"),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
+                        // ✅ เรียก callback กลับไป Dashboard
+                        onTrackPressed?.call(orderId);
                       },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: buttonColor,
@@ -219,8 +226,10 @@ class HomeTab extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10)),
                   minimumSize: const Size(100, 38),
                 ),
-                child: Text(buttonText,
-                    style: const TextStyle(color: Colors.white)),
+                child: Text(
+                  buttonText,
+                  style: const TextStyle(color: Colors.white),
+                ),
               ),
             ],
           ),

@@ -1,13 +1,13 @@
+import 'package:delivery_frontend/page/DashboardUser/all_riders_map_page.dart';
+import 'package:delivery_frontend/page/DashboardUser/tab_create_order.dart';
+import 'package:delivery_frontend/page/DashboardUser/tab_history.dart';
 import 'package:delivery_frontend/page/DashboardUser/tab_home.dart';
+import 'package:delivery_frontend/page/DashboardUser/tab_profile.dart';
+import 'package:delivery_frontend/page/DashboardUser/tab_track.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:delivery_frontend/page/login_user.dart';
-// import แท็บต่าง ๆ
-import 'tab_create_order.dart';
-import 'tab_history.dart';
-import 'tab_profile.dart';
-import 'tab_track.dart';
 
 class DashboardUserPage extends StatefulWidget {
   const DashboardUserPage({super.key});
@@ -20,11 +20,38 @@ class _DashboardUserPageState extends State<DashboardUserPage>
     with SingleTickerProviderStateMixin {
   final _auth = FirebaseAuth.instance;
   late TabController _tabController;
+  String? selectedOrderId;
 
   @override
   void initState() {
     super.initState();
+    // ✅ มี 5 แท็บ (Home, Track, Create, History, Profile)
     _tabController = TabController(length: 5, vsync: this);
+
+    // ✅ รีเซ็ต selectedOrderId เมื่อออกจากแท็บติดตาม
+    _tabController.addListener(() {
+      if (_tabController.index != 1 && selectedOrderId != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              selectedOrderId = null;
+            });
+          }
+        });
+      }
+    });
+  }
+
+  // ✅ ฟังก์ชันเปลี่ยนไปแท็บติดตามพร้อมส่ง orderId
+  void goToTrackTab(String orderId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          selectedOrderId = orderId;
+          _tabController.animateTo(1); // ไปแท็บ "ติดตาม"
+        });
+      }
+    });
   }
 
   @override
@@ -36,6 +63,7 @@ class _DashboardUserPageState extends State<DashboardUserPage>
       );
     }
 
+    // ✅ ดึงข้อมูลผู้ใช้จาก Firestore
     final userStream = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -79,8 +107,22 @@ class _DashboardUserPageState extends State<DashboardUserPage>
                   ),
                 ),
                 const Spacer(),
+                // 🔹 ปุ่มดูแผนที่รวมไรเดอร์ทั้งหมด
+                IconButton(
+                  icon: const Icon(Icons.map_outlined, color: Colors.white),
+                  tooltip: "ดูไรเดอร์ทั้งหมดบนแผนที่",
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const AllRidersMapPage()),
+                    );
+                  },
+                ),
+                // 🔹 ปุ่มออกจากระบบ
                 IconButton(
                   icon: const Icon(Icons.logout, color: Colors.white),
+                  tooltip: "ออกจากระบบ",
                   onPressed: () async {
                     await _auth.signOut();
                     if (!context.mounted) return;
@@ -108,20 +150,34 @@ class _DashboardUserPageState extends State<DashboardUserPage>
               ],
             ),
           ),
+
+          // 🔹 เนื้อหาทุกแท็บ
           body: TabBarView(
             controller: _tabController,
             children: [
-              HomeTab(),
-              TrackTab(),
+              // ✅ Home — แสดงรายการออเดอร์ล่าสุด
+              HomeTab(onTrackPressed: goToTrackTab),
+
+              // ✅ Track — แสดงสถานะของออเดอร์ที่เลือก
+              TrackTab(
+                selectedOrderId: selectedOrderId,
+                orderId: '',
+              ),
+
+              // ✅ Create — สร้างออเดอร์ใหม่
               CreateOrderForm(
                 onOrderCreated: () {
                   setState(() {
-                    _tabController.animateTo(0);
+                    _tabController.animateTo(0); // กลับไปหน้า Home
                   });
                 },
               ),
-              HistoryTab(),
-              ProfileTab(),
+
+              // ✅ History — ประวัติออเดอร์ทั้งหมด
+              const HistoryTab(),
+
+              // ✅ Profile — ข้อมูลโปรไฟล์ผู้ใช้
+              const ProfileTab(),
             ],
           ),
         );
