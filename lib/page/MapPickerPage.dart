@@ -8,7 +8,7 @@ class MapPickerPage extends StatefulWidget {
 
   const MapPickerPage({
     super.key,
-    required this.apiKey,
+    this.apiKey = '', // ✅ เพิ่ม default เพื่อป้องกัน error เวลาไม่ได้ส่งค่า
     required this.onPositionSelected,
   });
 
@@ -17,20 +17,24 @@ class MapPickerPage extends StatefulWidget {
 }
 
 class _MapPickerPageState extends State<MapPickerPage> {
-  LatLng _selected = LatLng(13.7563, 100.5018); // default: Bangkok
+  LatLng _selected = LatLng(13.7563, 100.5018); // 🏙 ค่าเริ่มต้น: กรุงเทพฯ
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-          title: const Text("เลือกตำแหน่งของคุณ"),
-          backgroundColor: Colors.green),
+        title: const Text("เลือกตำแหน่งของคุณ"),
+        backgroundColor: Colors.green,
+      ),
       body: Stack(
         children: [
           FlutterMap(
             options: MapOptions(
               initialCenter: _selected,
-              initialZoom: 14,
+              initialZoom: 15,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.all, // ✅ เปิดให้ลาก/ซูม/แตะได้หมด
+              ),
               onTap: (tapPosition, point) {
                 setState(() => _selected = point);
               },
@@ -38,8 +42,9 @@ class _MapPickerPageState extends State<MapPickerPage> {
             children: [
               TileLayer(
                 urlTemplate:
-                    'https://tile.thunderforest.com/atlas/{z}/{x}/{y}.png?apikey=12183dd51e894a75b97d6786c14a83ac',
-                userAgentPackageName: 'com.example.delivery_frontend',
+                    // ✅ แนะนำใช้ OpenStreetMap (ไม่ต้องใช้ apiKey)
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.kongphob.deliveryapp',
               ),
               MarkerLayer(
                 markers: [
@@ -47,24 +52,36 @@ class _MapPickerPageState extends State<MapPickerPage> {
                     point: _selected,
                     width: 60,
                     height: 60,
-                    child: const Icon(Icons.location_pin,
-                        color: Colors.red, size: 45),
+                    child: const Icon(
+                      Icons.location_pin,
+                      color: Colors.red,
+                      size: 45,
+                    ),
                   ),
                 ],
               ),
             ],
           ),
+
+          // 🔹 ปุ่มยืนยันตำแหน่ง
           Positioned(
-            bottom: 20,
-            left: 50,
-            right: 50,
-            child: ElevatedButton(
+            bottom: 25,
+            left: 40,
+            right: 40,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.check, color: Colors.white),
+              label: const Text("ยืนยันตำแหน่งนี้"),
               onPressed: () {
                 widget.onPositionSelected(_selected);
                 Navigator.pop(context);
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              child: const Text("ยืนยันตำแหน่งนี้"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                minimumSize: const Size.fromHeight(50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
             ),
           ),
         ],
