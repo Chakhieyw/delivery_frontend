@@ -12,17 +12,29 @@ class RiderPendingOrdersPage extends StatefulWidget {
 class _RiderPendingOrdersPageState extends State<RiderPendingOrdersPage> {
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
-
+  bool _isLoading = false;
+  
   Future<void> _acceptOrder(String orderId) async {
     final rider = _auth.currentUser;
     if (rider == null) return;
 
+    setState(() => _isLoading = true);
     try {
+      // ดึงข้อมูลไรเดอร์จาก Firestore
+      final riderDoc =
+          await _firestore.collection('riders').doc(rider.uid).get();
+      final riderData = riderDoc.data() ?? {};
+
+      // อัปเดตสถานะ + ข้อมูลไรเดอร์ในออเดอร์
       await _firestore.collection('deliveryRecords').doc(orderId).update({
-        'status': 'ไรเดอร์รับสินค้าแล้ว', // ✅ เปลี่ยนสถานะหลังรับงาน
+        'status': 'ไรเดอร์รับงาน', // ✅ ขั้นแรกคือ "รับงาน" ก่อน
         'riderId': rider.uid,
+        'riderName': riderData['name'] ?? 'ไม่ระบุชื่อ',
+        'riderPhone': riderData['phone'] ?? '-',
+        'riderBike': riderData['plate'] ?? '-',
         'acceptedAt': FieldValue.serverTimestamp(),
       });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("รับงานเรียบร้อย ✅")),
       );
@@ -31,6 +43,7 @@ class _RiderPendingOrdersPageState extends State<RiderPendingOrdersPage> {
         SnackBar(content: Text("เกิดข้อผิดพลาด: $e")),
       );
     }
+    setState(() => _isLoading = false);
   }
 
   @override
