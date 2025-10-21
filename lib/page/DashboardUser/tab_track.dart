@@ -4,9 +4,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-class TrackTab extends StatelessWidget {
-  final String? selectedOrderId; // ✅ รับ orderId ที่เลือกจากหน้า Home
-  const TrackTab({super.key, required this.selectedOrderId, required String orderId});
+class TrackTab extends StatefulWidget {
+  final String? selectedOrderId;
+  const TrackTab(
+      {super.key, required this.selectedOrderId, required String orderId});
+
+  @override
+  State<TrackTab> createState() => _TrackTabState();
+}
+
+class _TrackTabState extends State<TrackTab> {
+  LatLng? _previousRiderPosition;
 
   int _getStatusStep(String status) {
     switch (status) {
@@ -30,8 +38,7 @@ class TrackTab extends StatelessWidget {
       return const Center(child: Text("กรุณาเข้าสู่ระบบใหม่อีกครั้ง"));
     }
 
-    // ✅ ถ้าไม่มี order ที่เลือก (เช่น ยังไม่ได้กดติดตาม)
-    if (selectedOrderId == null) {
+    if (widget.selectedOrderId == null) {
       return const Center(
         child: Text(
           "ยังไม่ได้เลือกออเดอร์ที่ต้องติดตาม",
@@ -40,10 +47,9 @@ class TrackTab extends StatelessWidget {
       );
     }
 
-    // ✅ ดึงข้อมูลเฉพาะออเดอร์ที่เลือกแบบเรียลไทม์
     final orderStream = FirebaseFirestore.instance
         .collection('deliveryRecords')
-        .doc(selectedOrderId)
+        .doc(widget.selectedOrderId)
         .snapshots();
 
     return Scaffold(
@@ -51,9 +57,6 @@ class TrackTab extends StatelessWidget {
       body: StreamBuilder<DocumentSnapshot>(
         stream: orderStream,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
           if (!snapshot.hasData || !snapshot.data!.exists) {
             return const Center(child: Text("ไม่พบข้อมูลออเดอร์นี้"));
           }
@@ -64,12 +67,16 @@ class TrackTab extends StatelessWidget {
           final riderName = data['riderName'] ?? 'ยังไม่มีไรเดอร์รับงาน';
           final riderPhone = data['riderPhone'] ?? '-';
           final riderBike = data['riderBike'] ?? '-';
+          final pickupLatLng = _parseLatLng(data['pickupLatLng']);
+          final dropLatLng = _parseLatLng(data['dropLatLng']);
           final riderLat =
               double.tryParse(data['riderLat']?.toString() ?? '') ?? 0;
           final riderLng =
               double.tryParse(data['riderLng']?.toString() ?? '') ?? 0;
+          final currentRiderPos = LatLng(riderLat, riderLng);
 
-          final hasMap = step == 1 || step == 2;
+          // เก็บตำแหน่งก่อนหน้าเพื่อทำ animation
+          _previousRiderPosition ??= currentRiderPos;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -82,60 +89,86 @@ class TrackTab extends StatelessWidget {
                 const SizedBox(height: 20),
                 _buildTimeline(step),
                 const SizedBox(height: 25),
-
-                // 🔹 แผนที่ติดตามไรเดอร์ (เฉพาะสถานะ 2,3)
                 Container(
-                  height: 160,
+                  height: 250,
                   width: double.infinity,
                   decoration: BoxDecoration(
                     color: Colors.grey.shade200,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: hasMap && riderLat != 0 && riderLng != 0
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: FlutterMap(
-                            options: MapOptions(
-                              initialCenter: LatLng(riderLat, riderLng),
-                              initialZoom: 14,
-                            ),
-                            children: [
-                              TileLayer(
-                                urlTemplate:
-                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                userAgentPackageName: 'com.delivery.app',
-                              ),
-                              MarkerLayer(
-                                markers: [
-                                  Marker(
-                                    point: LatLng(riderLat, riderLng),
-                                    width: 60,
-                                    height: 60,
-                                    child: const Icon(Icons.delivery_dining,
-                                        color: Colors.green, size: 40),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                  child: pickupLatLng == null || dropLatLng == null
+                      ? const Center(
+                          child: Text("ไม่มีข้อมูลแผนที่"),
                         )
-                      : const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.map, color: Colors.grey, size: 40),
-                              SizedBox(height: 6),
-                              Text("แผนที่ติดตามตำแหน่งไรเดอร์",
-                                  style: TextStyle(color: Colors.grey)),
-                            ],
+                      : FlutterMap(
+                          options: MapOptions(
+                            initialCenter: pickupLatLng,
+                            initialZoom: 13,
                           ),
+                          children: [
+                            TileLayer(
+                              urlTemplate:
+                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.kongphob.deliveryapp',
+                            ),
+                            PolylineLayer(
+                              polylines: [
+                                Polyline(
+                                  points: [pickupLatLng, dropLatLng],
+                                  strokeWidth: 4,
+                                  color: Colors.green,
+                                ),
+                              ],
+                            ),
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: pickupLatLng,
+                                  width: 40,
+                                  height: 40,
+                                  child: const Icon(Icons.store,
+                                      color: Colors.green, size: 30),
+                                ),
+                                Marker(
+                                  point: dropLatLng,
+                                  width: 40,
+                                  height: 40,
+                                  child: const Icon(Icons.location_on,
+                                      color: Colors.red, size: 30),
+                                ),
+                              ],
+                            ),
+                            // 🔹 Marker ไรเดอร์พร้อม Animation
+                            if (riderLat != 0 && riderLng != 0)
+                              TweenAnimationBuilder<LatLng>(
+                                tween: Tween<LatLng>(
+                                  begin: _previousRiderPosition!,
+                                  end: currentRiderPos,
+                                ),
+                                duration: const Duration(seconds: 2),
+                                builder: (context, value, _) {
+                                  _previousRiderPosition = value;
+                                  return MarkerLayer(
+                                    markers: [
+                                      Marker(
+                                        point: value,
+                                        width: 60,
+                                        height: 60,
+                                        child: const Icon(
+                                          Icons.delivery_dining,
+                                          color: Colors.orange,
+                                          size: 40,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                          ],
                         ),
                 ),
                 const SizedBox(height: 20),
-
-                // 🔹 กล่องข้อมูลไรเดอร์
                 Container(
-                  width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.green.shade100,
@@ -185,7 +218,16 @@ class TrackTab extends StatelessWidget {
     );
   }
 
-  // 🔸 ฟังก์ชันสร้าง Timeline 4 ขั้น
+  LatLng? _parseLatLng(String? raw) {
+    if (raw == null || !raw.contains(",")) return null;
+    try {
+      final parts = raw.split(",");
+      return LatLng(double.parse(parts[0]), double.parse(parts[1]));
+    } catch (_) {
+      return null;
+    }
+  }
+
   Widget _buildTimeline(int step) {
     final steps = [
       "สร้างออเดอร์สำเร็จ",
@@ -193,12 +235,10 @@ class TrackTab extends StatelessWidget {
       "กำลังจัดส่งสินค้า",
       "ส่งสำเร็จ",
     ];
-
     return Column(
       children: List.generate(steps.length, (index) {
         final isActive = index <= step;
         return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Column(
               children: [
@@ -219,15 +259,11 @@ class TrackTab extends StatelessWidget {
               ],
             ),
             const SizedBox(width: 10),
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                steps[index],
-                style: TextStyle(
-                  color: isActive ? Colors.green : Colors.grey,
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 15,
-                ),
+            Text(
+              steps[index],
+              style: TextStyle(
+                color: isActive ? Colors.green : Colors.grey,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
               ),
             ),
           ],

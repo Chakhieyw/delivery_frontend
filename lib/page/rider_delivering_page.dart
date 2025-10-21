@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 
 class RiderDeliveringPage extends StatefulWidget {
   const RiderDeliveringPage({super.key});
@@ -21,6 +23,58 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
 
   File? _imageFile;
   bool _isUploading = false;
+  Timer? _locationTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // ✅ เริ่มอัปเดตตำแหน่งทุก 5 วินาที
+    _startUpdatingLocation();
+  }
+
+  @override
+  void dispose() {
+    _locationTimer?.cancel();
+    super.dispose();
+  }
+
+  // ✅ อัปเดตตำแหน่งไรเดอร์เรียลไทม์ทุก 5 วินาที
+  void _startUpdatingLocation() {
+    _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      final rider = _auth.currentUser;
+      if (rider == null) return;
+
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+
+        await _firestore.collection('riders').doc(rider.uid).update({
+          'lat': pos.latitude,
+          'lng': pos.longitude,
+        });
+
+        // ✅ อัปเดตทุกออเดอร์ที่กำลังทำ
+        final activeOrders = await _firestore
+            .collection('deliveryRecords')
+            .where('riderId', isEqualTo: rider.uid)
+            .where('status', whereIn: [
+          'ไรเดอร์รับสินค้าแล้ว',
+          'ไรเดอร์นำส่งสินค้าแล้ว',
+          'ไรเดอร์รับงาน'
+        ]).get();
+
+        for (final doc in activeOrders.docs) {
+          await doc.reference.update({
+            'riderLat': pos.latitude,
+            'riderLng': pos.longitude,
+          });
+        }
+      } catch (e) {
+        debugPrint("⚠️ Location update failed: $e");
+      }
+    });
+  }
 
   Future<void> _pickImage({required bool fromCamera}) async {
     final picked = await _picker.pickImage(
@@ -35,7 +89,7 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
   }
 
   Future<String?> _uploadProof(String orderId) async {
-    if (_imageFile == null) return null; // ✅ ถ้าไม่มีรูป ไม่ต้องอัปโหลด
+    if (_imageFile == null) return null;
     setState(() => _isUploading = true);
 
     try {
@@ -61,17 +115,17 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
     String nextStatus = "";
     String imageField = "";
 
-    if (currentStatus == "ไรเดอร์รับสินค้าแล้ว") {
-      nextStatus = "กำลังจัดส่ง";
+    // ✅ ใช้ชื่อสถานะให้ตรงกับ TrackTab
+    if (currentStatus == "ไรเดอร์รับงาน") {
+      nextStatus = "ไรเดอร์รับสินค้าแล้ว";
       imageField = "pickupProofUrl";
-    } else if (currentStatus == "กำลังจัดส่ง") {
+    } else if (currentStatus == "ไรเดอร์รับสินค้าแล้ว") {
       nextStatus = "ไรเดอร์นำส่งสินค้าแล้ว";
       imageField = "deliveryProofUrl";
     } else {
       return;
     }
 
-    // ✅ ถ้ามีรูปค่อยอัปโหลด แต่ถ้าไม่มีจะข้าม
     String? proofUrl;
     if (_imageFile != null) {
       proofUrl = await _uploadProof(orderId);
@@ -144,7 +198,7 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
           .collection('deliveryRecords')
           .where('riderId', isEqualTo: rider.uid)
           .where('status',
-              whereIn: ["ไรเดอร์รับสินค้าแล้ว", "กำลังจัดส่ง"]).snapshots(),
+              whereIn: ['ไรเดอร์รับงาน', 'ไรเดอร์รับสินค้าแล้ว']).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -169,13 +223,11 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
             final dropAddress = delivery['dropAddress'] ?? '-';
             final price = delivery['price'] ?? 0;
             final status = delivery['status'] ?? '-';
-
             final pickupLatLng = _parseLatLng(delivery['pickupLatLng']);
             final dropLatLng = _parseLatLng(delivery['dropLatLng']);
 
-            final isStep1 = status == "ไรเดอร์รับสินค้าแล้ว";
-            final buttonText =
-                isStep1 ? "ยืนยันการรับสินค้า" : "ส่งสินค้าสำเร็จ";
+            final isStep1 = status == "ไรเดอร์รับงาน";
+            final buttonText = isStep1 ? "ยืนยันรับสินค้า" : "ยืนยันส่งสำเร็จ";
             final buttonColor = isStep1 ? Colors.green : Colors.orange;
 
             return Container(
@@ -186,7 +238,7 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
+                    color: Colors.black.withOpacity(0.08),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -226,8 +278,6 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                     ],
                   ),
                   const Divider(height: 24),
-
-                  // 🗺️ แผนที่ + เส้นเชื่อมเส้นทาง
                   if (pickupLatLng != null && dropLatLng != null)
                     SizedBox(
                       height: 220,
@@ -239,8 +289,9 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                         children: [
                           TileLayer(
                             urlTemplate:
-                                'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            subdomains: const ['a', 'b', 'c'],
+                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName:
+                                'com.kongphob.deliveryapp', // ✅ ระบุชื่อแอป
                           ),
                           PolylineLayer(
                             polylines: [
@@ -257,31 +308,22 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                                 point: pickupLatLng,
                                 width: 40,
                                 height: 40,
-                                child: const Icon(
-                                  Icons.store,
-                                  color: Colors.green,
-                                  size: 35,
-                                ),
+                                child: const Icon(Icons.store,
+                                    color: Colors.green, size: 35),
                               ),
                               Marker(
                                 point: dropLatLng,
                                 width: 40,
                                 height: 40,
-                                child: const Icon(
-                                  Icons.location_on,
-                                  color: Colors.red,
-                                  size: 35,
-                                ),
+                                child: const Icon(Icons.location_on,
+                                    color: Colors.red, size: 35),
                               ),
                             ],
                           ),
                         ],
                       ),
                     ),
-
                   const SizedBox(height: 20),
-
-                  // 🖼️ เพิ่มรูปภาพ (optional)
                   GestureDetector(
                     onTap: _isUploading ? null : _showImageSourceDialog,
                     child: Container(
@@ -304,7 +346,6 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                             ),
                     ),
                   ),
-
                   const SizedBox(height: 20),
                   _isUploading
                       ? const Center(child: CircularProgressIndicator())
@@ -326,9 +367,10 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                   Text(
                     "฿$price บาท",
                     style: const TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16),
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ],
               ),
@@ -351,3 +393,4 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
     }
   }
 }
+  
