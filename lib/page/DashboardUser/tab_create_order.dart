@@ -33,7 +33,8 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
       final placemarks = await placemarkFromCoordinates(lat, lng);
       if (placemarks.isNotEmpty) {
         final p = placemarks.first;
-        return "${p.street ?? ''} ${p.subLocality ?? ''} ${p.locality ?? ''} ${p.administrativeArea ?? ''}".trim();
+        return "${p.street ?? ''} ${p.subLocality ?? ''} ${p.locality ?? ''} ${p.administrativeArea ?? ''}"
+            .trim();
       }
       return "ไม่พบที่อยู่";
     } catch (e) {
@@ -45,7 +46,22 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
   // 📍 ใช้ตำแหน่งปัจจุบัน
   Future<void> _getCurrentLocation(bool isPickup) async {
     try {
-      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("⚠️ โปรดเปิดสิทธิ์ Location ในการตั้งค่าแอป")),
+        );
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
       final address = await _getAddressFromLatLng(pos.latitude, pos.longitude);
       setState(() {
         final latLng = LatLng(pos.latitude, pos.longitude);
@@ -69,7 +85,8 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
       MaterialPageRoute(
         builder: (_) => MapPickerPage(
           onPositionSelected: (pos) async {
-            final address = await _getAddressFromLatLng(pos.latitude, pos.longitude);
+            final address =
+                await _getAddressFromLatLng(pos.latitude, pos.longitude);
             setState(() {
               if (isPickup) {
                 _pickupLatLng = pos;
@@ -107,7 +124,7 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
         "pickupAddress": pickupAddress,
         "pickupLatLng": pickupLatLng != null
             ? "${pickupLatLng.latitude},${pickupLatLng.longitude}"
-            : "-",  
+            : "-",
         "dropAddress": dropAddress,
         "dropLatLng": dropLatLng != null
             ? "${dropLatLng.latitude},${dropLatLng.longitude}"
@@ -157,7 +174,6 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
 
       // ✅ กลับไปหน้า Home โดยไม่ pop (หลีกเลี่ยงจอดำ)
       widget.onOrderCreated?.call();
-
     } catch (e) {
       debugPrint("❌ Error: $e");
       ScaffoldMessenger.of(context)
