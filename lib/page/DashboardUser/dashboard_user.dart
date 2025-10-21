@@ -4,6 +4,7 @@ import 'package:delivery_frontend/page/DashboardUser/tab_history.dart';
 import 'package:delivery_frontend/page/DashboardUser/tab_home.dart';
 import 'package:delivery_frontend/page/DashboardUser/tab_profile.dart';
 import 'package:delivery_frontend/page/DashboardUser/tab_track.dart';
+import 'package:delivery_frontend/page/select_role.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -52,6 +53,43 @@ class _DashboardUserPageState extends State<DashboardUserPage>
         });
       }
     });
+  }
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("ออกจากระบบ"),
+        content: const Text("คุณต้องการออกจากระบบใช่หรือไม่?"),
+        actions: [
+          TextButton(
+            child: const Text("ยกเลิก", style: TextStyle(color: Colors.grey)),
+            onPressed: () => Navigator.pop(context, false),
+          ),
+          TextButton(
+            child:
+                const Text("ออกจากระบบ", style: TextStyle(color: Colors.red)),
+            onPressed: () => Navigator.pop(context, true),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginUserPage()),
+        (route) => false,
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("ออกจากระบบไม่สำเร็จ: $e")),
+      );
+    }
   }
 
   @override
@@ -121,18 +159,9 @@ class _DashboardUserPageState extends State<DashboardUserPage>
                 ),
                 // 🔹 ปุ่มออกจากระบบ
                 IconButton(
-                  icon: const Icon(Icons.logout, color: Colors.white),
-                  tooltip: "ออกจากระบบ",
-                  onPressed: () async {
-                    await _auth.signOut();
-                    if (!context.mounted) return;
-                    Navigator.of(context, rootNavigator: true)
-                        .pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const LoginUserPage()),
-                      (route) => false,
-                    );
-                  },
-                ),
+                    icon: const Icon(Icons.logout, color: Colors.white),
+                    tooltip: "ออกจากระบบ",
+                    onPressed: _logout),
               ],
             ),
             bottom: TabBar(
