@@ -53,7 +53,7 @@ class HistoryTab extends StatelessWidget {
               final price = order['price']?.toString() ?? '0';
               final status = order['status'] ?? 'ไม่ทราบสถานะ';
               final createdAt = _formatDate(order['createdAt']);
-              final orderNumber = '#D-${index + 1}';
+              final orderNumber = '#Orders-${index + 1}';
 
               Color statusColor;
               switch (status) {

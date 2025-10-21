@@ -13,50 +13,68 @@ class _RiderPendingOrdersPageState extends State<RiderPendingOrdersPage> {
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
   bool _isLoading = false;
-  
+
   Future<void> _acceptOrder(String orderId) async {
     final rider = _auth.currentUser;
     if (rider == null) return;
 
     setState(() => _isLoading = true);
+
     try {
-      // ดึงข้อมูลไรเดอร์จาก Firestore
-      final riderDoc =
-          await _firestore.collection('riders').doc(rider.uid).get();
+      // ✅ ดึงข้อมูลไรเดอร์จาก Firestore
+      final riderDoc = await _firestore.collection('riders').doc(rider.uid).get();
       final riderData = riderDoc.data() ?? {};
 
-      // อัปเดตสถานะ + ข้อมูลไรเดอร์ในออเดอร์
-      await _firestore.collection('deliveryRecords').doc(orderId).update({
-        'status': 'ไรเดอร์รับงาน', // ✅ ขั้นแรกคือ "รับงาน" ก่อน
-        'riderId': rider.uid,
-        'riderName': riderData['name'] ?? 'ไม่ระบุชื่อ',
-        'riderPhone': riderData['phone'] ?? '-',
-        'riderBike': riderData['plate'] ?? '-',
-        'acceptedAt': FieldValue.serverTimestamp(),
+      // ✅ ใช้ Transaction เพื่อป้องกันการรับงานซ้ำ
+      await _firestore.runTransaction((txn) async {
+        final orderRef = _firestore.collection('deliveryRecords').doc(orderId);
+        final orderSnap = await txn.get(orderRef);
+
+        if (!orderSnap.exists) {
+          throw Exception("ออเดอร์นี้ถูกลบไปแล้ว");
+        }
+
+        final orderData = orderSnap.data()!;
+        if (orderData['status'] != 'รอไรเดอร์รับงาน') {
+          throw Exception("ออเดอร์นี้ถูกคนอื่นรับไปแล้ว ❌");
+        }
+
+        // ✅ อัปเดตข้อมูล
+        txn.update(orderRef, {
+          'status': 'ไรเดอร์รับงาน',
+          'riderId': rider.uid,
+          'riderName': riderData['name'] ?? 'ไม่ระบุชื่อ',
+          'riderPhone': riderData['phone'] ?? '-',
+          'riderBike': riderData['plate'] ?? '-',
+          'acceptedAt': FieldValue.serverTimestamp(),
+        });
       });
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("รับงานเรียบร้อย ✅")),
+        const SnackBar(content: Text("✅ รับงานเรียบร้อย")),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("เกิดข้อผิดพลาด: $e")),
       );
+    } finally {
+      setState(() => _isLoading = false);
     }
-    setState(() => _isLoading = false);
   }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore
-          .collection('deliveryRecords') // ✅ ใช้ collection จริง
-          .where('status', isEqualTo: 'รอไรเดอร์รับงาน') // ✅ ตรงกับ Firestore
+          .collection('deliveryRecords')
+          .where('status', isEqualTo: 'รอไรเดอร์รับงาน')
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting || _isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
+
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const Center(
             child: Text(
@@ -145,7 +163,7 @@ class _RiderPendingOrdersPageState extends State<RiderPendingOrdersPage> {
                         ),
                       ),
                       ElevatedButton(
-                        onPressed: () => _acceptOrder(orderId),
+                        onPressed: _isLoading ? null : () => _acceptOrder(orderId),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange,
                           shape: RoundedRectangleBorder(
