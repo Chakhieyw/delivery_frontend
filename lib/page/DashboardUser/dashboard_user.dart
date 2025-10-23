@@ -4,11 +4,10 @@ import 'package:delivery_frontend/page/DashboardUser/tab_history.dart';
 import 'package:delivery_frontend/page/DashboardUser/tab_home.dart';
 import 'package:delivery_frontend/page/DashboardUser/tab_profile.dart';
 import 'package:delivery_frontend/page/DashboardUser/tab_track.dart';
-import 'package:delivery_frontend/page/select_role.dart';
+import 'package:delivery_frontend/page/login_user.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:delivery_frontend/page/login_user.dart';
 
 class DashboardUserPage extends StatefulWidget {
   const DashboardUserPage({super.key});
@@ -49,7 +48,7 @@ class _DashboardUserPageState extends State<DashboardUserPage>
       if (mounted) {
         setState(() {
           selectedOrderId = orderId;
-          _tabController.animateTo(1); // ไปแท็บ "ติดตาม"
+          _tabController.animateTo(1); // ✅ เปลี่ยนไปแท็บ "ติดตาม"
         });
       }
     });
@@ -184,27 +183,24 @@ class _DashboardUserPageState extends State<DashboardUserPage>
           body: TabBarView(
             controller: _tabController,
             children: [
-              // ✅ Home — แสดงรายการออเดอร์ล่าสุด
+              // ✅ หน้า Home ส่ง callback กลับมาเปลี่ยนแท็บ
               HomeTab(onTrackPressed: goToTrackTab),
 
-              // ✅ Track — แสดงสถานะของออเดอร์ที่เลือก
-              TrackTab(
-                selectedOrderId: selectedOrderId,
+              // ✅ สร้าง TabTrack ใหม่ทุกครั้งเมื่อ selectedOrderId เปลี่ยน
+              Builder(
+                builder: (context) =>
+                    TrackTab(selectedOrderId: selectedOrderId),
               ),
 
-              // ✅ Create — สร้างออเดอร์ใหม่
               CreateOrderForm(
                 onOrderCreated: () {
                   setState(() {
-                    _tabController.animateTo(0); // กลับไปหน้า Home
+                    _tabController.animateTo(0);
                   });
                 },
               ),
 
-              // ✅ History — ประวัติออเดอร์ทั้งหมด
               const HistoryTab(),
-
-              // ✅ Profile — ข้อมูลโปรไฟล์ผู้ใช้
               const ProfileTab(),
             ],
           ),
