@@ -127,14 +127,14 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
     );
   }
 
-  // ✅ อัปโหลดหลักฐานขึ้น Cloudinary (แทน Firebase Storage)
+  // ✅ อัปโหลดหลักฐานขึ้น Cloudinary
   Future<String?> _uploadProof(String orderId, bool isPickup) async {
     if (_imageFile == null) return null;
     setState(() => _isUploading = true);
     try {
-      // ⚙️ ตั้งค่า Cloudinary (แก้ให้ตรงของก้องภพ)
-      const cloudName = "dwew1qkvb"; // 👉 เช่น deliverymsu
-      const uploadPreset = "delivery_upload"; // 👉 เช่น unsigned_delivery
+      // ⚙️ ตั้งค่า Cloudinary (ของก้องภพ)
+      const cloudName = "dwew1qkvb";
+      const uploadPreset = "delivery_upload";
 
       final url =
           Uri.parse("https://api.cloudinary.com/v1_1/$cloudName/image/upload");
@@ -168,21 +168,21 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
     }
   }
 
-  // ✅ ตรวจว่าห่างจากจุดรับสินค้าน้อยกว่า 20 เมตร
-  Future<bool> _isWithinDistance(LatLng? pickupLatLng) async {
-    if (pickupLatLng == null) return true;
+  // ✅ ตรวจว่าห่างจากพิกัดที่กำหนดไม่เกิน 20 เมตร
+  Future<bool> _isWithinDistance(LatLng? targetLatLng) async {
+    if (targetLatLng == null) return true;
     final pos = await Geolocator.getCurrentPosition();
     final dist = Geolocator.distanceBetween(
       pos.latitude,
       pos.longitude,
-      pickupLatLng.latitude,
-      pickupLatLng.longitude,
+      targetLatLng.latitude,
+      targetLatLng.longitude,
     );
     setState(() => _currentDistance = dist);
     return dist <= 20;
   }
 
-  // ✅ ยืนยันสถานะ (บังคับรูป + ตรวจระยะ + Transaction)
+  // ✅ ยืนยันสถานะ (ตรวจระยะ + อัปโหลดรูป + บันทึกประวัติแบบถาวร)
   Future<void> _confirmStep(
       String orderId, String currentStatus, LatLng? pickupLatLng) async {
     if (_imageFile == null) {
@@ -192,6 +192,10 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
       return;
     }
 
+    final rider = _auth.currentUser;
+    if (rider == null) return;
+
+    // 🟩 ตรวจระยะตอนรับสินค้า
     if (currentStatus == "ไรเดอร์รับงาน") {
       bool withinRange = await _isWithinDistance(pickupLatLng);
       if (!withinRange) {
@@ -203,19 +207,68 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
       }
     }
 
+    // 🟧 ตรวจระยะตอนส่งสินค้า
+    if (currentStatus == "ไรเดอร์รับสินค้าแล้ว") {
+      final orderSnap =
+          await _firestore.collection('deliveryRecords').doc(orderId).get();
+      final dropLatLng = _parseLatLng(orderSnap['dropLatLng']);
+      if (dropLatLng != null) {
+        bool withinRange = await _isWithinDistance(dropLatLng);
+        if (!withinRange) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text("🚫 ห่างจากจุดส่งสินค้ามากกว่า 20 เมตร!")),
+          );
+          return;
+        }
+      }
+    }
+
     final isPickup = currentStatus == "ไรเดอร์รับงาน";
-    // ✅ แก้สถานะสุดท้ายให้เป็น “จัดส่งสำเร็จ”
     final nextStatus = isPickup ? "ไรเดอร์รับสินค้าแล้ว" : "จัดส่งสำเร็จ";
     final imageField = isPickup ? "pickupProofUrl" : "deliveryProofUrl";
 
+    // ✅ อัปโหลดรูปไป Cloudinary
     String? proofUrl = await _uploadProof(orderId, isPickup);
     if (proofUrl == null) return;
 
-    await _firestore.collection('deliveryRecords').doc(orderId).update({
+    // ✅ ดึงข้อมูลล่าสุดก่อนบันทึก
+    final orderRef = _firestore.collection('deliveryRecords').doc(orderId);
+    final orderSnap = await orderRef.get();
+    final orderData = orderSnap.data() ?? {};
+
+    // ✅ อัปเดตสถานะใน deliveryRecords
+    await orderRef.update({
       'status': nextStatus,
       imageField: proofUrl,
       'updatedAt': FieldValue.serverTimestamp(),
+      'riderId': rider.uid,
     });
+
+    // ✅ ถ้าส่งสำเร็จ → บันทึกลง history (เช็กก่อนว่าเคยมีไหม)
+    if (nextStatus == "จัดส่งสำเร็จ") {
+      final historyRef = _firestore.collection('deliveryHistory').doc(orderId);
+      final historySnap = await historyRef.get();
+
+      // 🔒 ป้องกันซ้ำ: ถ้ามีแล้วจะไม่เขียนทับ
+      if (!historySnap.exists) {
+        await historyRef.set({
+          ...orderData,
+          'riderId': rider.uid,
+          'status': 'จัดส่งสำเร็จ',
+          'completedAt': FieldValue.serverTimestamp(),
+          'archived': true,
+        }, SetOptions(merge: true));
+      } else {
+        await historyRef.update({
+          'status': 'จัดส่งสำเร็จ',
+          'completedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // 🧹 mark ว่าปิดงานแล้ว
+      await orderRef.update({'archived': true});
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("✅ อัปเดตสถานะเป็น $nextStatus สำเร็จ")),
@@ -224,7 +277,7 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
     setState(() => _imageFile = null);
   }
 
-  // ✅ สร้างแถบ Progress แสดงสถานะการจัดส่ง
+  // ✅ Progress bar เดิม
   Widget _buildProgressBar(String status) {
     final steps = [
       "ไรเดอร์รับงาน",
@@ -427,7 +480,7 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Text(
-                              "📏 ระยะจากจุดรับสินค้า: ${_currentDistance!.toStringAsFixed(2)} เมตร",
+                              "📏 ระยะจากจุดรับ/ส่งสินค้า: ${_currentDistance!.toStringAsFixed(2)} เมตร",
                               style: TextStyle(
                                 color: _currentDistance! <= 20
                                     ? Colors.green
