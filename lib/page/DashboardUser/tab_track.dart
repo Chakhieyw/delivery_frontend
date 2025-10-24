@@ -318,8 +318,7 @@ class _TrackTabState extends State<TrackTab> {
       "ไรเดอร์รับสินค้าแล้ว",
       "ไรเดอร์กำลังนำส่งสินค้าแล้ว",
       "จัดส่งสำเร็จ",
-    ];
-
+    ]; 
     return Column(
       children: List.generate(steps.length, (index) {
         final isActive = index <= step;
