@@ -14,16 +14,18 @@ class SenderAllShipmentsMapPage extends StatefulWidget {
 
 class _SenderAllShipmentsMapPageState extends State<SenderAllShipmentsMapPage> {
   final _auth = FirebaseAuth.instance;
+  final MapController _mapController = MapController();
+
+  LatLng? _focusedRiderPos;
+  String? _focusedRiderId;
+  bool _autoZoomDone = false;
 
   @override
   Widget build(BuildContext context) {
     final user = _auth.currentUser;
-
     if (user == null) {
       return const Scaffold(
-        body: Center(
-          child: Text("กรุณาเข้าสู่ระบบใหม่อีกครั้ง"),
-        ),
+        body: Center(child: Text("กรุณาเข้าสู่ระบบใหม่อีกครั้ง")),
       );
     }
 
@@ -34,206 +36,275 @@ class _SenderAllShipmentsMapPageState extends State<SenderAllShipmentsMapPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "🌍 แผนที่รวมทุก Shipment ของฉัน",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: const Text("🌍 แผนที่รวมทุก Shipment ของฉัน",
+            style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.green,
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: shipmentsStream,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+        builder: (context, shipmentSnap) {
+          if (shipmentSnap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Text(
-                "ยังไม่มีรายการจัดส่งในระบบ",
-                style: TextStyle(color: Colors.black54, fontSize: 16),
-              ),
-            );
+          if (!shipmentSnap.hasData || shipmentSnap.data!.docs.isEmpty) {
+            return const Center(child: Text("ยังไม่มีรายการจัดส่งในระบบ"));
           }
 
-          final docs = snapshot.data!.docs;
-          final List<Marker> markers = [];
-          final List<Polyline> polylines = [];
-          final List<LatLng> allPoints = [];
+          final shipments = shipmentSnap.data!.docs;
+          final riderIds = shipments
+              .map((d) => (d.data() as Map<String, dynamic>)['riderId'])
+              .where((id) => id != null && id.toString().isNotEmpty)
+              .cast<String>()
+              .toList();
 
-          // ✅ ดึงข้อมูลทุก Shipment
-          for (var doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
+          final ridersStream = FirebaseFirestore.instance
+              .collection('riders')
+              .where(FieldPath.documentId,
+                  whereIn: riderIds.isEmpty ? ['dummy'] : riderIds)
+              .snapshots();
 
-            final pickupLatLng = _parseLatLng(data['pickupLatLng']);
-            final dropLatLng = _parseLatLng(data['dropLatLng']);
-            final status = data['status'] ?? '-';
-            final riderId = data['riderId'];
+          return StreamBuilder<QuerySnapshot>(
+            stream: ridersStream,
+            builder: (context, riderSnap) {
+              final markers = <Marker>[];
+              final polylines = <Polyline>[];
+              final allPoints = <LatLng>[];
+              final riderList = <Map<String, dynamic>>[];
 
-            if (pickupLatLng != null) {
-              allPoints.add(pickupLatLng);
-              markers.add(Marker(
-                point: pickupLatLng,
-                width: 40,
-                height: 40,
-                child: Tooltip(
-                  message: "จุดรับสินค้า",
-                  child: const Icon(Icons.store, color: Colors.green, size: 35),
-                ),
-              ));
-            }
+              // ✅ pickup/drop markers
+              for (var doc in shipments) {
+                final data = doc.data() as Map<String, dynamic>;
+                final pickup = _parseLatLng(data['pickupLatLng']);
+                final drop = _parseLatLng(data['dropLatLng']);
+                if (pickup != null) {
+                  markers.add(Marker(
+                    point: pickup,
+                    width: 36,
+                    height: 36,
+                    child:
+                        const Icon(Icons.store, color: Colors.green, size: 32),
+                  ));
+                  allPoints.add(pickup);
+                }
+                if (drop != null) {
+                  markers.add(Marker(
+                    point: drop,
+                    width: 36,
+                    height: 36,
+                    child: const Icon(Icons.location_on,
+                        color: Colors.red, size: 34),
+                  ));
+                  allPoints.add(drop);
+                }
+                if (pickup != null && drop != null) {
+                  polylines.add(Polyline(
+                    points: [pickup, drop],
+                    strokeWidth: 3,
+                    color: Colors.green.withOpacity(0.4),
+                  ));
+                }
+              }
 
-            if (dropLatLng != null) {
-              allPoints.add(dropLatLng);
-              markers.add(Marker(
-                point: dropLatLng,
-                width: 40,
-                height: 40,
-                child: Tooltip(
-                  message: "จุดส่งสินค้า",
-                  child:
-                      const Icon(Icons.location_on, color: Colors.red, size: 38),
-                ),
-              ));
-            }
+              // ✅ riders markers
+              if (riderSnap.hasData) {
+                for (var r in riderSnap.data!.docs) {
+                  final rd = r.data() as Map<String, dynamic>;
+                  final lat = (rd['lat'] ?? 0.0).toDouble();
+                  final lng = (rd['lng'] ?? 0.0).toDouble();
+                  final name = rd['name'] ?? 'Rider';
+                  final id = r.id;
 
-            if (pickupLatLng != null && dropLatLng != null) {
-              polylines.add(Polyline(
-                points: [pickupLatLng, dropLatLng],
-                strokeWidth: 3,
-                color: Colors.green.withOpacity(0.5),
-              ));
-            }
+                  if (lat != 0.0 && lng != 0.0) {
+                    final pos = LatLng(lat, lng);
+                    riderList.add({'id': id, 'name': name, 'pos': pos});
+                    allPoints.add(pos);
 
-            // ✅ ตำแหน่งไรเดอร์แบบเรียลไทม์
-            if (riderId != null && riderId != '') {
-              FirebaseFirestore.instance
-                  .collection('riders')
-                  .doc(riderId)
-                  .snapshots()
-                  .listen((riderSnap) {
-                if (!riderSnap.exists) return;
-                final riderData = riderSnap.data()!;
-                final lat = riderData['lat'] ?? 0.0;
-                final lng = riderData['lng'] ?? 0.0;
-
-                if (lat != 0.0 && lng != 0.0) {
-                  setState(() {
-                    markers.add(
-                      Marker(
-                        point: LatLng(lat, lng),
-                        width: 45,
-                        height: 45,
-                        child: Tooltip(
-                          message:
-                              "ไรเดอร์: ${riderData['name'] ?? '-'}\nสถานะ: $status",
-                          child: const Icon(
-                            Icons.delivery_dining,
-                            color: Colors.blue,
-                            size: 40,
-                          ),
+                    markers.add(Marker(
+                      point: pos,
+                      width: 44,
+                      height: 44,
+                      child: Tooltip(
+                        message: "ไรเดอร์: $name",
+                        child: Icon(
+                          Icons.delivery_dining,
+                          color: id == _focusedRiderId
+                              ? Colors.orange
+                              : Colors.blue,
+                          size: 38,
                         ),
                       ),
-                    );
-                  });
+                    ));
+
+                    // 🎯 Auto follow if this is the focused rider
+                    if (_focusedRiderId == id) {
+                      _focusCameraOnRider(pos);
+                    }
+                  }
                 }
-              });
-            }
-          }
+              }
 
-          if (allPoints.isEmpty) {
-            return const Center(
-              child: Text("ไม่พบตำแหน่งจัดส่งสินค้าในระบบ"),
-            );
-          }
+              if (allPoints.isEmpty) {
+                return const Center(
+                    child: Text("ไม่พบตำแหน่งจัดส่งสินค้าในระบบ"));
+              }
 
-          // ✅ คำนวณจุดกลางของทุก Shipment
-          final avgLat =
-              allPoints.map((p) => p.latitude).reduce((a, b) => a + b) /
-                  allPoints.length;
-          final avgLng =
-              allPoints.map((p) => p.longitude).reduce((a, b) => a + b) /
-                  allPoints.length;
-          final center = LatLng(avgLat, avgLng);
+              final avgLat =
+                  allPoints.map((p) => p.latitude).reduce((a, b) => a + b) /
+                      allPoints.length;
+              final avgLng =
+                  allPoints.map((p) => p.longitude).reduce((a, b) => a + b) /
+                      allPoints.length;
+              final center = LatLng(avgLat, avgLng);
 
-          return Stack(
-            children: [
-              FlutterMap(
-                options: MapOptions(
-                  initialCenter: center,
-                  initialZoom: 12,
-                ),
+              return Stack(
                 children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.delivery.app',
-                  ),
-                  PolylineLayer(polylines: polylines),
-                  MarkerLayer(markers: markers),
-                ],
-              ),
-
-              // 🔹 ปุ่มกลับ
-              Positioned(
-                top: 16,
-                right: 16,
-                child: FloatingActionButton(
-                  backgroundColor: Colors.green,
-                  mini: true,
-                  child: const Icon(Icons.refresh, color: Colors.white),
-                  onPressed: () => setState(() {}),
-                ),
-              ),
-
-              // 🔹 Legend (คำอธิบาย)
-              Positioned(
-                bottom: 20,
-                left: 16,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
+                  FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: center,
+                      initialZoom: 12,
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.delivery.app',
                       ),
+                      PolylineLayer(polylines: polylines),
+                      MarkerLayer(markers: markers),
                     ],
                   ),
-                  child: Row(
-                    children: const [
-                      Icon(Icons.store, color: Colors.green),
-                      SizedBox(width: 4),
-                      Text("จุดรับ", style: TextStyle(fontSize: 12)),
-                      SizedBox(width: 12),
-                      Icon(Icons.location_on, color: Colors.red),
-                      SizedBox(width: 4),
-                      Text("จุดส่ง", style: TextStyle(fontSize: 12)),
-                      SizedBox(width: 12),
-                      Icon(Icons.delivery_dining, color: Colors.blue),
-                      SizedBox(width: 4),
-                      Text("ไรเดอร์", style: TextStyle(fontSize: 12)),
-                    ],
+
+                  // 🔹 Legend
+                  Positioned(
+                    bottom: 20,
+                    left: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 5,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.store, color: Colors.green, size: 20),
+                          SizedBox(width: 4),
+                          Text("จุดรับ", style: TextStyle(fontSize: 12)),
+                          SizedBox(width: 12),
+                          Icon(Icons.location_on, color: Colors.red, size: 20),
+                          SizedBox(width: 4),
+                          Text("จุดส่ง", style: TextStyle(fontSize: 12)),
+                          SizedBox(width: 12),
+                          Icon(Icons.delivery_dining,
+                              color: Colors.blue, size: 20),
+                          SizedBox(width: 4),
+                          Text("ไรเดอร์", style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ],
+
+                  // 🔹 ปุ่มเลือกไรเดอร์
+                  Positioned(
+                    bottom: 20,
+                    right: 16,
+                    child: FloatingActionButton(
+                      backgroundColor: Colors.green,
+                      child: const Icon(Icons.search, color: Colors.white),
+                      onPressed: () => _showRiderSelector(context, riderList),
+                    ),
+                  ),
+                ],
+              );
+            },
           );
         },
       ),
     );
   }
 
-  LatLng? _parseLatLng(String? raw) {
+  // 🎯 แสดง Bottom Sheet เลือกไรเดอร์
+  void _showRiderSelector(
+      BuildContext context, List<Map<String, dynamic>> riders) {
+    if (riders.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) {
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            const Text(
+              "เลือกไรเดอร์ที่ต้องการติดตาม",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const Divider(),
+            ...riders.map((r) {
+              return ListTile(
+                leading: const Icon(Icons.delivery_dining, color: Colors.blue),
+                title: Text(r['name']),
+                trailing: _focusedRiderId == r['id']
+                    ? const Icon(Icons.check_circle, color: Colors.green)
+                    : null,
+                onTap: () {
+                  setState(() {
+                    _focusedRiderId = r['id'];
+                    _focusedRiderPos = r['pos'];
+                    _autoZoomDone = false;
+                  });
+                  Navigator.pop(context);
+                },
+              );
+            }),
+            if (_focusedRiderId != null)
+              ListTile(
+                leading: const Icon(Icons.close, color: Colors.red),
+                title: const Text("ยกเลิกการติดตาม"),
+                onTap: () {
+                  setState(() {
+                    _focusedRiderId = null;
+                    _focusedRiderPos = null;
+                  });
+                  Navigator.pop(context);
+                },
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _focusCameraOnRider(LatLng pos) {
+    if (_focusedRiderPos == null ||
+        pos.latitude != _focusedRiderPos!.latitude ||
+        pos.longitude != _focusedRiderPos!.longitude) {
+      _focusedRiderPos = pos;
+      if (!_autoZoomDone) {
+        _mapController.move(pos, 15.5);
+        _autoZoomDone = true;
+      } else {
+        _mapController.move(pos, _mapController.camera.zoom);
+      }
+    }
+  }
+
+  static LatLng? _parseLatLng(String? raw) {
     if (raw == null || !raw.contains(",")) return null;
     try {
       final parts = raw.split(",");
       return LatLng(double.parse(parts[0]), double.parse(parts[1]));
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
