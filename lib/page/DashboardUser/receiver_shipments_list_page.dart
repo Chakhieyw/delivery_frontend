@@ -1,3 +1,4 @@
+import 'package:delivery_frontend/page/DashboardUser/receiver_track_page.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -319,7 +320,15 @@ class _ReceiverShipmentsListPageState extends State<ReceiverShipmentsListPage> {
                           ),
                         ),
                         ElevatedButton.icon(
-                          onPressed: () => widget.onTrackPressed?.call(orderId),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    ReceiverTrackPage(orderId: orderId),
+                              ),
+                            );
+                          },
                           icon: const Icon(Icons.location_on),
                           label: const Text("ติดตาม"),
                           style: ElevatedButton.styleFrom(
