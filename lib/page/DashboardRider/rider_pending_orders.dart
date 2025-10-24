@@ -130,7 +130,7 @@ class _RiderPendingOrdersPageState extends State<RiderPendingOrdersPage> {
             final orderId = deliveries[index].id;
 
             final pickupAddress = data['pickupAddress'] ?? '-';
-            final dropAddress = data['dropAddress'] ?? '-';
+            final dropAddress = data['receiverAddress'] ?? '-';
             final price = data['price'] ?? 0;
             final pickupLatLng = _parseLatLng(data['pickupLatLng']);
             final dropLatLng = _parseLatLng(data['dropLatLng']);
@@ -138,7 +138,7 @@ class _RiderPendingOrdersPageState extends State<RiderPendingOrdersPage> {
             final pickupPhone = data['userPhone'] ?? '-';
             final dropName = data['receiverName'] ?? 'ไม่ระบุชื่อผู้รับ';
             final dropPhone = data['receiverPhone'] ?? '-';
-            final rawImageValue = data['productImageUrl'];
+            final rawImageValue = data['imageUrl'];
 
             return FutureBuilder<String?>(
               future: _resolveImageUrl(rawImageValue),
