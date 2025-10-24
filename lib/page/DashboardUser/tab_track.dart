@@ -456,6 +456,7 @@ class _TrackTabState extends State<TrackTab> {
 }
 
 // 🔹 แผนที่รวมทุก Shipment ของผู้ใช้
+// 🔹 แผนที่รวมทุก Shipment ของผู้ใช้ + ตำแหน่งไรเดอร์ Real-time
 class _AllShipmentsMapView extends StatelessWidget {
   const _AllShipmentsMapView();
 
@@ -464,6 +465,7 @@ class _AllShipmentsMapView extends StatelessWidget {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const SizedBox();
 
+    // ✅ ดึงข้อมูลออเดอร์ของผู้ใช้ทั้งหมดแบบเรียลไทม์
     final stream = FirebaseFirestore.instance
         .collection('deliveryRecords')
         .where('userId', isEqualTo: user.uid)
@@ -481,71 +483,125 @@ class _AllShipmentsMapView extends StatelessWidget {
           return const Center(child: Text("ยังไม่มี Shipment ในระบบ"));
         }
 
-        final markers = <Marker>[];
-        final polylines = <Polyline>[];
-        final allPoints = <LatLng>[];
+        // ✅ รวม riderId ทั้งหมดที่มีในออเดอร์นี้
+        final riderIds = docs
+            .map((e) => (e.data() as Map<String, dynamic>)['riderId'])
+            .where((id) => id != null && id.toString().isNotEmpty)
+            .cast<String>()
+            .toList();
 
-        for (var doc in docs) {
-          final data = doc.data() as Map<String, dynamic>;
-          final pickup = _parseLatLng(data['pickupLatLng']);
-          final drop = _parseLatLng(data['dropLatLng']);
+        // 🔹 ฟังตำแหน่งไรเดอร์ทั้งหมดแบบเรียลไทม์
+        final ridersStream = FirebaseFirestore.instance
+            .collection('riders')
+            .where(FieldPath.documentId,
+                whereIn: riderIds.isEmpty ? ['none'] : riderIds)
+            .snapshots();
 
-          if (pickup != null && drop != null) {
-            allPoints.addAll([pickup, drop]);
-            polylines.add(Polyline(
-              points: [pickup, drop],
-              strokeWidth: 3,
-              color: Colors.green.withOpacity(0.5),
-            ));
+        return StreamBuilder<QuerySnapshot>(
+          stream: ridersStream,
+          builder: (context, riderSnap) {
+            final markers = <Marker>[];
+            final polylines = <Polyline>[];
+            final allPoints = <LatLng>[];
 
-            markers.addAll([
-              Marker(
-                point: pickup,
-                width: 40,
-                height: 40,
-                child: const Icon(Icons.store, color: Colors.green, size: 30),
+            // ✅ เพิ่ม pickup & drop ของทุกออเดอร์
+            for (var doc in docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final pickup = _parseLatLng(data['pickupLatLng']);
+              final drop = _parseLatLng(data['dropLatLng']);
+
+              if (pickup != null && drop != null) {
+                allPoints.addAll([pickup, drop]);
+                polylines.add(Polyline(
+                  points: [pickup, drop],
+                  strokeWidth: 3,
+                  color: Colors.green.withOpacity(0.4),
+                ));
+
+                markers.addAll([
+                  Marker(
+                    point: pickup,
+                    width: 36,
+                    height: 36,
+                    child:
+                        const Icon(Icons.store, color: Colors.green, size: 30),
+                  ),
+                  Marker(
+                    point: drop,
+                    width: 36,
+                    height: 36,
+                    child: const Icon(Icons.location_on,
+                        color: Colors.red, size: 32),
+                  ),
+                ]);
+              }
+            }
+
+            // ✅ เพิ่มตำแหน่งไรเดอร์แบบ Real-time
+            if (riderSnap.hasData) {
+              for (var riderDoc in riderSnap.data!.docs) {
+                final r = riderDoc.data() as Map<String, dynamic>;
+                final lat = r['lat']?.toDouble() ?? 0.0;
+                final lng = r['lng']?.toDouble() ?? 0.0;
+                final name = r['name'] ?? 'Rider';
+
+                if (lat != 0.0 && lng != 0.0) {
+                  final pos = LatLng(lat, lng);
+                  allPoints.add(pos);
+                  markers.add(
+                    Marker(
+                      point: pos,
+                      width: 40,
+                      height: 40,
+                      child: Tooltip(
+                        message: name,
+                        child: const Icon(
+                          Icons.motorcycle,
+                          color: Colors.blue,
+                          size: 34,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+              }
+            }
+
+            // ✅ หาค่ากลางทั้งหมดสำหรับแผนที่
+            final center = allPoints.isNotEmpty
+                ? LatLng(
+                    allPoints.map((e) => e.latitude).reduce((a, b) => a + b) /
+                        allPoints.length,
+                    allPoints.map((e) => e.longitude).reduce((a, b) => a + b) /
+                        allPoints.length,
+                  )
+                : LatLng(16.245, 103.251);
+
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: FlutterMap(
+                options: MapOptions(
+                  initialCenter: center,
+                  initialZoom: 12,
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.delivery.app',
+                  ),
+                  if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
+                  if (markers.isNotEmpty) MarkerLayer(markers: markers),
+                ],
               ),
-              Marker(
-                point: drop,
-                width: 40,
-                height: 40,
-                child:
-                    const Icon(Icons.location_on, color: Colors.red, size: 32),
-              ),
-            ]);
-          }
-        }
-
-        final center = allPoints.isNotEmpty
-            ? LatLng(
-                allPoints.map((e) => e.latitude).reduce((a, b) => a + b) /
-                    allPoints.length,
-                allPoints.map((e) => e.longitude).reduce((a, b) => a + b) /
-                    allPoints.length,
-              )
-            : LatLng(16.245, 103.251);
-
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: FlutterMap(
-            options: MapOptions(
-              initialCenter: center,
-              initialZoom: 12,
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.delivery.app',
-              ),
-              PolylineLayer(polylines: polylines),
-              MarkerLayer(markers: markers),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
+  // ✅ ฟังก์ชันแปลง String เป็น LatLng
   static LatLng? _parseLatLng(String? raw) {
     if (raw == null || !raw.contains(',')) return null;
     try {
