@@ -46,23 +46,60 @@ class _RiderPendingOrdersPageState extends State<RiderPendingOrdersPage> {
     }
   }
 
+  // ✅ ป้องกันการรับงานซ้ำ + ใช้ Transaction ป้องกันชนกัน
   Future<void> _acceptOrder(String orderId) async {
     final rider = _auth.currentUser;
     if (rider == null) return;
 
     try {
-      await _firestore.collection('deliveryRecords').doc(orderId).update({
-        'riderId': rider.uid,
-        'status': 'ไรเดอร์รับงาน',
-        'acceptedAt': FieldValue.serverTimestamp(),
+      // 🔸 1. ตรวจว่ามีงานค้างอยู่ไหม (กันรับงานซ้ำ)
+      final currentJobs = await _firestore
+          .collection('deliveryRecords')
+          .where('riderId', isEqualTo: rider.uid)
+          .where('status', whereIn: ['ไรเดอร์รับงาน', 'ไรเดอร์รับสินค้าแล้ว'])
+          .limit(1)
+          .get();
+
+      if (currentJobs.docs.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("⚠️ คุณมีงานที่ยังไม่เสร็จ กรุณาส่งงานเดิมก่อน")),
+        );
+        return;
+      }
+
+      // 🔸 2. ใช้ Transaction กันชน (Atomic Update)
+      await _firestore.runTransaction((transaction) async {
+        final docRef = _firestore.collection('deliveryRecords').doc(orderId);
+        final snapshot = await transaction.get(docRef);
+
+        if (!snapshot.exists) {
+          throw Exception("ไม่พบออเดอร์นี้");
+        }
+
+        final data = snapshot.data() as Map<String, dynamic>;
+
+        // ถ้ามีคนรับไปแล้ว หรือสถานะเปลี่ยนไปจาก "รอไรเดอร์รับงาน"
+        if (data['riderId'] != null && data['riderId'] != '' ||
+            data['status'] != 'รอไรเดอร์รับงาน') {
+          throw Exception("ออเดอร์นี้ถูกผู้อื่นรับไปแล้ว");
+        }
+
+        transaction.update(docRef, {
+          'riderId': rider.uid,
+          'status': 'ไรเดอร์รับงาน',
+          'acceptedAt': FieldValue.serverTimestamp(),
+        });
       });
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("✅ รับงานสำเร็จ")),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("❌ เกิดข้อผิดพลาด: $e")),
+        SnackBar(content: Text("❌ รับงานไม่สำเร็จ: $e")),
       );
     }
   }
