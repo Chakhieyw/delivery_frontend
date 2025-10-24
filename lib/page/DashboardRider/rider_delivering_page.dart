@@ -1,13 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 
 class RiderDeliveringPage extends StatefulWidget {
   const RiderDeliveringPage({super.key});
@@ -65,7 +66,6 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
           'lng': pos.longitude,
         });
 
-        // ✅ อัปเดตตำแหน่งในทุกออเดอร์ที่กำลังทำ
         final activeOrders = await _firestore
             .collection('deliveryRecords')
             .where('riderId', isEqualTo: rider.uid)
@@ -127,6 +127,47 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
     );
   }
 
+  // ✅ อัปโหลดหลักฐานขึ้น Cloudinary (แทน Firebase Storage)
+  Future<String?> _uploadProof(String orderId, bool isPickup) async {
+    if (_imageFile == null) return null;
+    setState(() => _isUploading = true);
+    try {
+      // ⚙️ ตั้งค่า Cloudinary (แก้ให้ตรงของก้องภพ)
+      const cloudName = "dwew1qkvb"; // 👉 เช่น deliverymsu
+      const uploadPreset = "delivery_upload"; // 👉 เช่น unsigned_delivery
+
+      final url =
+          Uri.parse("https://api.cloudinary.com/v1_1/$cloudName/image/upload");
+
+      final request = http.MultipartRequest('POST', url)
+        ..fields['upload_preset'] = uploadPreset
+        ..files
+            .add(await http.MultipartFile.fromPath('file', _imageFile!.path));
+
+      final response = await request.send();
+      if (response.statusCode == 200) {
+        final resData = await http.Response.fromStream(response);
+        final data = jsonDecode(resData.body);
+        final uploadedUrl = data['secure_url'];
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("✅ อัปโหลดรูปขึ้น Cloudinary สำเร็จ")),
+          );
+        }
+        return uploadedUrl;
+      } else {
+        debugPrint("❌ Cloudinary Upload Failed: ${response.statusCode}");
+        return null;
+      }
+    } catch (e) {
+      debugPrint("❌ uploadProof ล้มเหลว: $e");
+      return null;
+    } finally {
+      setState(() => _isUploading = false);
+    }
+  }
+
   // ✅ ตรวจว่าห่างจากจุดรับสินค้าน้อยกว่า 20 เมตร
   Future<bool> _isWithinDistance(LatLng? pickupLatLng) async {
     if (pickupLatLng == null) return true;
@@ -139,32 +180,6 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
     );
     setState(() => _currentDistance = dist);
     return dist <= 20;
-  }
-
-  // ✅ อัปโหลดหลักฐานขึ้น Firebase Storage
-  Future<String?> _uploadProof(String orderId, bool isPickup) async {
-    if (_imageFile == null) return null;
-    setState(() => _isUploading = true);
-    try {
-      final fileName =
-          "${isPickup ? "pickup" : "delivery"}_${DateTime.now().millisecondsSinceEpoch}.jpg";
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('deliveryProofs/$orderId/$fileName');
-      await ref.putFile(_imageFile!);
-      final url = await ref.getDownloadURL();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("✅ อัปโหลดรูปสำเร็จ")),
-        );
-      }
-      return url;
-    } catch (e) {
-      debugPrint("❌ uploadProof ล้มเหลว: $e");
-      return null;
-    } finally {
-      setState(() => _isUploading = false);
-    }
   }
 
   // ✅ ยืนยันสถานะ (บังคับรูป + ตรวจระยะ + Transaction)
