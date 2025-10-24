@@ -32,9 +32,39 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
 
   /// ✅ สมัคร Rider
   Future<void> _register() async {
+    // ✅ ตรวจว่ากรอกครบทุกช่องก่อน
+    if (_nameCtl.text.trim().isEmpty ||
+        _emailCtl.text.trim().isEmpty ||
+        _phoneCtl.text.trim().isEmpty ||
+        _plateCtl.text.trim().isEmpty ||
+        _passwordCtl.text.trim().isEmpty ||
+        _confirmCtl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ กรุณากรอกข้อมูลให้ครบทุกช่อง")),
+      );
+      return;
+    }
+
+    // ✅ ตรวจว่ารหัสผ่านตรงกันไหม
     if (_passwordCtl.text != _confirmCtl.text) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("❌ รหัสผ่านไม่ตรงกัน")),
+      );
+      return;
+    }
+
+    // ✅ ตรวจเบอร์โทร (10 หลัก)
+    if (_phoneCtl.text.trim().length != 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ กรุณากรอกเบอร์โทรให้ครบ 10 หลัก")),
+      );
+      return;
+    }
+
+    // ✅ ตรวจว่ามีเลือกรูปหรือยัง
+    if (_imageFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ กรุณาเลือกรูปโปรไฟล์ก่อนสมัคร")),
       );
       return;
     }
@@ -45,29 +75,36 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
       final email = _emailCtl.text.trim();
       final password = _passwordCtl.text.trim();
 
+      // ✅ สร้างบัญชี Firebase Auth
       UserCredential user = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
 
+      // ✅ อัปโหลดรูปไป Cloudinary
       String imageUrl = "";
       if (_imageFile != null) {
         imageUrl = await CloudinaryService.uploadImage(
               fromCamera: false,
-              file: _imageFile, // ✅ ส่งไฟล์ที่เลือกไป
+              file: _imageFile, // ส่งไฟล์ที่เลือกไป
               folder: "profiles",
             ) ??
             "";
       }
 
+      // ✅ บันทึกข้อมูล Rider ลง Firestore
       await FirebaseFirestore.instance
           .collection("riders")
           .doc(user.user!.uid)
           .set({
+        "uid": user.user!.uid,
         "name": _nameCtl.text.trim(),
         "email": email,
         "phone": _phoneCtl.text.trim(),
         "plate": _plateCtl.text.trim(),
-        "imageUrl": imageUrl ?? "",
+        "imageUrl": imageUrl,
         "role": "rider",
+        "lat": 0.0,
+        "lng": 0.0,
+        "status": "offline",
         "createdAt": FieldValue.serverTimestamp(),
       });
 
@@ -75,6 +112,7 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
         const SnackBar(content: Text("✅ สมัคร Rider สำเร็จ")),
       );
 
+      // ✅ ไปหน้า Login
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginRiderPage()),
