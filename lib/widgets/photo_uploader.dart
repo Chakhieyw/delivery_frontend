@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import '../services/cloudinary_service.dart';
 
 class PhotoUploader extends StatefulWidget {
@@ -12,7 +11,7 @@ class PhotoUploader extends StatefulWidget {
     super.key,
     required this.onUploaded,
     this.folder = 'shipments',
-    this.buttonText = 'ถ่ายรูปและอัปโหลด',
+    this.buttonText = 'ถ่ายรูปหรือเลือกรูปเพื่ออัปโหลด',
   });
 
   @override
@@ -20,36 +19,41 @@ class PhotoUploader extends StatefulWidget {
 }
 
 class _PhotoUploaderState extends State<PhotoUploader> {
-  final _picker = ImagePicker();
   File? _preview;
   bool _busy = false;
 
-  Future<void> _takeAndUpload() async {
+  /// 📸 ฟังก์ชันอัปโหลดรูป (กล้องหรือแกลเลอรี)
+  Future<void> _uploadImage({required bool fromCamera}) async {
     try {
-      final picked = await _picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-      );
-      if (picked == null) return;
-
-      setState(() => _preview = File(picked.path));
       setState(() => _busy = true);
 
-      final url = await CloudinaryService().uploadFile(
-        _preview!,
+      final url = await CloudinaryService.uploadImage(
+        fromCamera: fromCamera,
         folder: widget.folder,
       );
+
+      if (url == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ อัปโหลดไม่สำเร็จ')),
+        );
+        return;
+      }
+
       await widget.onUploaded(url);
+
+      setState(() {
+        _preview = null;
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('อัปโหลดสำเร็จ ✅')),
+          const SnackBar(content: Text('✅ อัปโหลดสำเร็จ')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+          SnackBar(content: Text('⚠️ เกิดข้อผิดพลาด: $e')),
         );
       }
     } finally {
@@ -62,15 +66,33 @@ class _PhotoUploaderState extends State<PhotoUploader> {
     return Column(
       children: [
         if (_preview != null)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.file(_preview!, width: 220),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                _preview!,
+                width: 220,
+                height: 160,
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
-        const SizedBox(height: 10),
-        ElevatedButton.icon(
-          onPressed: _busy ? null : _takeAndUpload,
-          icon: const Icon(Icons.camera_alt),
-          label: Text(_busy ? 'กำลังอัปโหลด...' : widget.buttonText),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton.icon(
+              onPressed: _busy ? null : () => _uploadImage(fromCamera: true),
+              icon: const Icon(Icons.camera_alt),
+              label: Text(_busy ? 'กำลังอัปโหลด...' : 'ถ่ายรูป'),
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: _busy ? null : () => _uploadImage(fromCamera: false),
+              icon: const Icon(Icons.photo_library),
+              label: Text(_busy ? 'กำลังอัปโหลด...' : 'เลือกรูปจากแกลเลอรี'),
+            ),
+          ],
         ),
       ],
     );
