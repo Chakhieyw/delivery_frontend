@@ -62,76 +62,156 @@ class _ReceiverShipmentsListPageState extends State<ReceiverShipmentsListPage> {
 
           // ✅ แสดงแผนที่รวมทั้งหมด (3.1.4–3.1.5)
           if (showMap) {
-            final List<Marker> markers = [];
-            final List<Polyline> polylines = [];
-            final List<LatLng> allPoints = [];
+            return StreamBuilder<QuerySnapshot>(
+              stream:
+                  FirebaseFirestore.instance.collection('riders').snapshots(),
+              builder: (context, riderSnap) {
+                final List<Marker> markers = [];
+                final List<Polyline> polylines = [];
+                final List<LatLng> allPoints = [];
 
-            for (var d in docs) {
-              final data = d.data() as Map<String, dynamic>;
-              final pickup = _parseLatLng(data['pickupLatLng']);
-              final drop = _parseLatLng(data['dropLatLng']);
-              final sender = data['userName'] ?? '-';
-              final status = data['status'] ?? '-';
+                for (var d in docs) {
+                  final data = d.data() as Map<String, dynamic>;
+                  final pickup = _parseLatLng(data['pickupLatLng']);
+                  final drop = _parseLatLng(data['dropLatLng']);
+                  final sender = data['userName'] ?? '-';
+                  final status = data['status'] ?? '-';
+                  final riderId = data['riderId'];
 
-              if (pickup != null && drop != null) {
-                allPoints.addAll([pickup, drop]);
+                  if (pickup != null && drop != null) {
+                    allPoints.addAll([pickup, drop]);
+                    polylines.add(Polyline(
+                      points: [pickup, drop],
+                      strokeWidth: 4,
+                      color: Colors.green.withOpacity(0.5),
+                    ));
 
-                // เส้นทางรับ–ส่ง
-                polylines.add(Polyline(
-                  points: [pickup, drop],
-                  strokeWidth: 4,
-                  color: Colors.green.withOpacity(0.5),
-                ));
+                    // จุดรับ
+                    markers.add(Marker(
+                      width: 40,
+                      height: 40,
+                      point: pickup,
+                      child: GestureDetector(
+                        onTap: () => _showShipmentInfo(sender, status),
+                        child: const Icon(Icons.store,
+                            color: Colors.green, size: 32),
+                      ),
+                    ));
 
-                // จุดรับสินค้า
-                markers.add(Marker(
-                  width: 40,
-                  height: 40,
-                  point: pickup,
-                  child: GestureDetector(
-                    onTap: () => _showShipmentInfo(sender, status),
-                    child:
-                        const Icon(Icons.store, color: Colors.green, size: 32),
-                  ),
-                ));
+                    // จุดส่ง
+                    markers.add(Marker(
+                      width: 40,
+                      height: 40,
+                      point: drop,
+                      child: GestureDetector(
+                        onTap: () => _showShipmentInfo(sender, status),
+                        child: const Icon(Icons.location_on,
+                            color: Colors.red, size: 34),
+                      ),
+                    ));
+                  }
 
-                // จุดส่งสินค้า (ผู้รับ)
-                markers.add(Marker(
-                  width: 40,
-                  height: 40,
-                  point: drop,
-                  child: GestureDetector(
-                    onTap: () => _showShipmentInfo(sender, status),
-                    child: const Icon(Icons.location_on,
-                        color: Colors.red, size: 34),
-                  ),
-                ));
-              }
-            }
+                  // ✅ แสดงตำแหน่งไรเดอร์แบบ real-time ถ้ามี riderId
+                  if (riderSnap.hasData && riderId != null && riderId != '') {
+                    final riders = riderSnap.data!.docs;
+                    final riderDoc =
+                        riders.where((r) => r.id == riderId).isEmpty
+                            ? null
+                            : riders.firstWhere((r) => r.id == riderId);
+                    if (riderDoc != null) {
+                      final rData = riderDoc.data() as Map<String, dynamic>;
+                      final lat = (rData['lat'] ?? 0.0).toDouble();
+                      final lng = (rData['lng'] ?? 0.0).toDouble();
+                      final name = rData['name'] ?? 'ไรเดอร์';
+                      if (lat != 0.0 && lng != 0.0) {
+                        final riderPos = LatLng(lat, lng);
+                        allPoints.add(riderPos);
+                        markers.add(Marker(
+                          width: 45,
+                          height: 45,
+                          point: riderPos,
+                          child: Tooltip(
+                            message: "ไรเดอร์: $name\nสถานะ: $status",
+                            child: const Icon(Icons.delivery_dining,
+                                color: Colors.blue, size: 38),
+                          ),
+                        ));
+                      }
+                    }
+                  }
+                }
 
-            // คำนวณ center
-            final center = allPoints.isNotEmpty
-                ? LatLng(
-                    allPoints.map((e) => e.latitude).reduce((a, b) => a + b) /
-                        allPoints.length,
-                    allPoints.map((e) => e.longitude).reduce((a, b) => a + b) /
-                        allPoints.length,
-                  )
-                : LatLng(13.736717, 100.523186);
+                final center = allPoints.isNotEmpty
+                    ? LatLng(
+                        allPoints
+                                .map((e) => e.latitude)
+                                .reduce((a, b) => a + b) /
+                            allPoints.length,
+                        allPoints
+                                .map((e) => e.longitude)
+                                .reduce((a, b) => a + b) /
+                            allPoints.length,
+                      )
+                    : LatLng(13.736717, 100.523186);
 
-            return FlutterMap(
-              options: MapOptions(
-                initialCenter: center,
-                initialZoom: 12.5,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.delivery.app',
-                ),
-                PolylineLayer(polylines: polylines),
-                MarkerLayer(markers: markers),
-              ],
+                return Stack(
+                  children: [
+                    FlutterMap(
+                      options: MapOptions(
+                        initialCenter: center,
+                        initialZoom: 12.5,
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.delivery.app',
+                        ),
+                        PolylineLayer(polylines: polylines),
+                        MarkerLayer(markers: markers),
+                      ],
+                    ),
+
+                    // 🔹 Legend แสดงสัญลักษณ์
+                    Positioned(
+                      bottom: 20,
+                      left: 16,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 5,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.store, color: Colors.green, size: 20),
+                            SizedBox(width: 4),
+                            Text("จุดรับ", style: TextStyle(fontSize: 12)),
+                            SizedBox(width: 12),
+                            Icon(Icons.location_on,
+                                color: Colors.red, size: 20),
+                            SizedBox(width: 4),
+                            Text("จุดส่ง", style: TextStyle(fontSize: 12)),
+                            SizedBox(width: 12),
+                            Icon(Icons.delivery_dining,
+                                color: Colors.blue, size: 20),
+                            SizedBox(width: 4),
+                            Text("ไรเดอร์", style: TextStyle(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           }
 
