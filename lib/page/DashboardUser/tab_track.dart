@@ -364,6 +364,9 @@ class _TrackTabState extends State<TrackTab> {
   }
 
   Widget _buildShipmentDetailCard(Map<String, dynamic> data, String status) {
+    final pickupProof = data['pickupProofUrl'];
+    final deliveryProof = data['deliveryProofUrl'];
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -406,6 +409,46 @@ class _TrackTabState extends State<TrackTab> {
             "วันที่สร้าง: ${(data['createdAt'] as Timestamp?)?.toDate().toString().split('.').first ?? '-'}",
             style: const TextStyle(color: Colors.grey, fontSize: 13),
           ),
+          const SizedBox(height: 16),
+
+          // ✅ แสดงภาพหลักฐานตอน "ไรเดอร์รับสินค้าแล้ว"
+          if (pickupProof != null && pickupProof.toString().isNotEmpty) ...[
+            const Text(
+              "📸 หลักฐานตอนรับสินค้า",
+              style:
+                  TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.network(
+                pickupProof,
+                height: 180,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // ✅ แสดงภาพหลักฐานตอน "จัดส่งสำเร็จ"
+          if (deliveryProof != null && deliveryProof.toString().isNotEmpty) ...[
+            const Text(
+              "✅ หลักฐานตอนจัดส่งสำเร็จ",
+              style:
+                  TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.network(
+                deliveryProof,
+                height: 180,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ],
         ],
       ),
     );

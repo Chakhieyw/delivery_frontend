@@ -49,7 +49,7 @@ class HistoryTab extends StatelessWidget {
             itemBuilder: (context, index) {
               final order = orders[index].data() as Map<String, dynamic>;
               final pickup = order['pickupAddress'] ?? '-';
-              final drop = order['dropAddress'] ?? '-';
+              final drop = order['receiverAddress'] ?? '-';
               final price = order['price']?.toString() ?? '0';
               final status = order['status'] ?? 'ไม่ทราบสถานะ';
               final createdAt = _formatDate(order['createdAt']);
