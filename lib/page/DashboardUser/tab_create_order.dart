@@ -28,15 +28,25 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
   LatLng? _dropLatLng;
   bool _loading = false;
 
-  // ผู้รับที่เลือก
   String? selectedReceiverId;
   String? selectedReceiverName;
   String? selectedReceiverPhone;
   String? selectedReceiverAddress;
 
-  // ดึงข้อมูลผู้ใช้ทั้งหมดจาก Firestore
+  // ✅ ดึง users ทั้งหมด
   Stream<QuerySnapshot> get receiversStream =>
       FirebaseFirestore.instance.collection('users').snapshots();
+
+  // ✅ ดึงข้อมูลของผู้ใช้ปัจจุบัน (ผู้ส่ง)
+  Future<Map<String, dynamic>?> _getCurrentUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    return doc.data();
+  }
 
   // ✅ แปลงพิกัดเป็นชื่อที่อยู่
   Future<String> _getAddressFromLatLng(double lat, double lng) async {
@@ -53,17 +63,40 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
     }
   }
 
+  // 📍 ใช้พิกัดของผู้ส่งจาก Firestore
+  Future<void> _useMyDefaultAddress() async {
+    final userData = await _getCurrentUserData();
+    if (userData == null) return;
+
+    final addresses =
+        List<Map<String, dynamic>>.from(userData['addresses'] ?? []);
+    if (addresses.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("❌ คุณยังไม่มีที่อยู่ในโปรไฟล์")),
+      );
+      return;
+    }
+
+    final addr = addresses.first; // ใช้ที่อยู่แรก
+    setState(() {
+      _pickupAddressCtl.text = addr['address'];
+      _pickupLatLng = LatLng(addr['lat'], addr['lng']);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content: Text("✅ ใช้ที่อยู่เริ่มต้นของคุณเป็นจุดรับสินค้า")),
+    );
+  }
+
   // 📍 ใช้ตำแหน่งปัจจุบัน
   Future<void> _getCurrentLocation(bool isPickup) async {
     try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.deniedForever) {
+      LocationPermission permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text("⚠️ โปรดเปิดสิทธิ์ Location ในการตั้งค่าแอป")),
+          const SnackBar(content: Text("⚠️ โปรดเปิดสิทธิ์ Location")),
         );
         return;
       }
@@ -87,7 +120,7 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
     }
   }
 
-  // 🗺️ เปิดแผนที่ให้เลือกตำแหน่ง
+  // 🗺️ เปิดแผนที่เลือกตำแหน่ง
   Future<void> _openMapPicker(bool isPickup) async {
     await Navigator.push(
       context,
@@ -117,7 +150,7 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
     if (picked != null) setState(() => _imageFile = File(picked.path));
   }
 
-  // ✅ สร้างออเดอร์ใหม่
+  // ✅ สร้างออเดอร์
   Future<void> _createOrder() async {
     if (selectedReceiverId == null ||
         _pickupAddressCtl.text.isEmpty ||
@@ -138,26 +171,22 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
           .get();
       final userData = userDoc.data() ?? {};
 
-      // ✅ บันทึกข้อมูล shipment ลง Firestore
       await FirebaseFirestore.instance.collection("deliveryRecords").add({
-        "userId": user.uid, // ✅ กลับมาใช้ userId
+        "userId": user.uid,
         "userName": userData['name'] ?? 'ไม่ระบุ',
         "userPhone": userData['phone'] ?? '-',
-
+        "pickupAddress": _pickupAddressCtl.text,
+        "pickupLatLng": _pickupLatLng != null
+            ? "${_pickupLatLng!.latitude},${_pickupLatLng!.longitude}"
+            : "-",
         "receiverId": selectedReceiverId,
         "receiverName": selectedReceiverName,
         "receiverPhone": selectedReceiverPhone,
         "receiverAddress": selectedReceiverAddress ?? '-',
-
-        "pickupAddress": _pickupAddressCtl.text,
         "dropAddress": _dropAddressCtl.text,
-        "pickupLatLng": _pickupLatLng != null
-            ? "${_pickupLatLng!.latitude},${_pickupLatLng!.longitude}"
-            : "-",
         "dropLatLng": _dropLatLng != null
             ? "${_dropLatLng!.latitude},${_dropLatLng!.longitude}"
             : "-",
-
         "details": _detailCtl.text,
         "price": double.tryParse(_priceCtl.text) ?? 0.0,
         "status": "รอไรเดอร์รับงาน",
@@ -188,23 +217,6 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildTitle("ค้นหาผู้รับจากเบอร์โทรศัพท์"),
-            TextField(
-              controller: _searchPhoneCtl,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
-                hintText: "พิมพ์เบอร์โทรผู้รับ เช่น 0812345678",
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.clear),
-                  onPressed: () {
-                    setState(() => _searchPhoneCtl.clear());
-                  },
-                ),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 15),
             _buildTitle("เลือกผู้รับสินค้า"),
             StreamBuilder<QuerySnapshot>(
               stream: receiversStream,
@@ -213,109 +225,125 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final allUsers = snapshot.data!.docs;
-
-                // 🔍 กรองจากเบอร์โทร
-                final filteredUsers = allUsers.where((doc) {
+                final users = snapshot.data!.docs;
+                final filtered = users.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  final phone = data['phone']?.toString() ?? '';
+                  final phone = data['phone'] ?? '';
                   return phone.contains(_searchPhoneCtl.text.trim());
                 }).toList();
 
-                if (filteredUsers.isEmpty) {
-                  return const Text("ไม่พบผู้ใช้ที่ตรงกับเบอร์โทรนี้",
-                      style: TextStyle(color: Colors.grey));
-                }
+                return Column(
+                  children: [
+                    TextField(
+                      controller: _searchPhoneCtl,
+                      decoration: const InputDecoration(
+                        hintText: "ค้นหาผู้รับโดยเบอร์โทรศัพท์",
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        hintText: "เลือกผู้รับ",
+                      ),
+                      value: selectedReceiverId,
+                      items: filtered.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return DropdownMenuItem(
+                          value: doc.id,
+                          child: Text("${data['name']} (${data['phone']})"),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        final user = users.firstWhere((u) => u.id == val);
+                        final data = user.data() as Map<String, dynamic>;
+                        final addresses = List<Map<String, dynamic>>.from(
+                            data['addresses'] ?? []);
+                        final addr =
+                            addresses.isNotEmpty ? addresses.first : null;
 
-                return DropdownButtonFormField<String>(
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: "เลือกผู้รับจากรายชื่อผู้ใช้",
-                  ),
-                  value: selectedReceiverId,
-                  items: filteredUsers.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    return DropdownMenuItem<String>(
-                      value: doc.id,
-                      child: Text("${data['name']} (${data['phone'] ?? '-'})"),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    final user = allUsers.firstWhere((u) => u.id == val);
-                    final data = user.data() as Map<String, dynamic>;
-                    setState(() {
-                      selectedReceiverId = val;
-                      selectedReceiverName = data['name'];
-                      selectedReceiverPhone = data['phone'];
-                      selectedReceiverAddress = data['address'] ?? '-';
-                    });
-                  },
+                        setState(() {
+                          selectedReceiverId = val;
+                          selectedReceiverName = data['name'];
+                          selectedReceiverPhone = data['phone'];
+                          selectedReceiverAddress = addr?['address'] ?? '-';
+                          if (addr != null) {
+                            _dropAddressCtl.text = addr['address'];
+                            _dropLatLng = LatLng(addr['lat'], addr['lng']);
+                          }
+                        });
+                      },
+                    ),
+                  ],
                 );
               },
             ),
             const SizedBox(height: 20),
-            _buildAddressSection("จุดรับสินค้า", _pickupAddressCtl, true),
+            _buildTitle("จุดรับสินค้า (ผู้ส่ง)"),
+            TextField(
+              controller: _pickupAddressCtl,
+              readOnly: true,
+              decoration: InputDecoration(
+                hintText: "แตะปุ่มเพื่อเลือกที่อยู่",
+                border: const OutlineInputBorder(),
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.home, color: Colors.green),
+                      tooltip: "ใช้ที่อยู่ของฉัน",
+                      onPressed: _useMyDefaultAddress,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.my_location, color: Colors.orange),
+                      onPressed: () => _getCurrentLocation(true),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.map, color: Colors.blue),
+                      onPressed: () => _openMapPicker(true),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 20),
-            _buildAddressSection("จุดส่งสินค้า", _dropAddressCtl, false),
+            _buildAddressSection(
+                "จุดส่งสินค้า (ผู้รับ)", _dropAddressCtl, false),
             const SizedBox(height: 20),
             _buildTitle("รายละเอียดเพิ่มเติม"),
             TextField(
               controller: _detailCtl,
               maxLines: 3,
               decoration: const InputDecoration(
-                hintText: "รายละเอียดพัสดุ, คำแนะนำ",
+                hintText: "รายละเอียดพัสดุหรือคำแนะนำ",
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 20),
-            _buildTitle("รูปถ่ายพัสดุ"),
-            GestureDetector(
-              onTap: _pickImage,
-              child: Container(
-                height: 100,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: _imageFile != null
-                    ? Image.file(_imageFile!, fit: BoxFit.cover)
-                    : const Center(child: Text("แตะเพื่อถ่ายรูปพัสดุ")),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildTitle("ค่าใช้จ่าย"),
+            _buildTitle("ค่าใช้จ่าย (บาท)"),
             TextField(
               controller: _priceCtl,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                hintText: "ระบุราคา (บาท)",
+                hintText: "เช่น 100",
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 30),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton(
-                  onPressed: _loading ? null : () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey,
-                    minimumSize: const Size(130, 45),
-                  ),
-                  child: const Text("ยกเลิก"),
+            Center(
+              child: ElevatedButton(
+                onPressed: _loading ? null : _createOrder,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
                 ),
-                ElevatedButton(
-                  onPressed: _loading ? null : _createOrder,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    minimumSize: const Size(130, 45),
-                  ),
-                  child: _loading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("สร้างออเดอร์"),
-                ),
-              ],
+                child: _loading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text("สร้างออเดอร์"),
+              ),
             ),
           ],
         ),
@@ -325,10 +353,8 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
 
   Widget _buildTitle(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        child: Text(
-          text,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
+        child: Text(text,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       );
 
   Widget _buildAddressSection(
@@ -341,17 +367,17 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
           controller: ctl,
           readOnly: true,
           decoration: InputDecoration(
-            hintText: "แตะปุ่มด้านขวาเพื่อเลือกที่อยู่",
+            hintText: "แตะเพื่อเลือกที่อยู่",
             border: const OutlineInputBorder(),
             suffixIcon: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.my_location, color: Colors.green),
+                  icon: const Icon(Icons.my_location, color: Colors.orange),
                   onPressed: () => _getCurrentLocation(isPickup),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.map, color: Colors.orange),
+                  icon: const Icon(Icons.map, color: Colors.blue),
                   onPressed: () => _openMapPicker(isPickup),
                 ),
               ],
