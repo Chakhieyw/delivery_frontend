@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:delivery_frontend/page/map_picker_page.dart';
+import 'package:delivery_frontend/services/cloudinary_service.dart'; // ✅ ใช้คลาสที่สร้างไว้
 
 class CreateOrderForm extends StatefulWidget {
   final VoidCallback? onOrderCreated;
@@ -24,6 +25,7 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
   final _searchPhoneCtl = TextEditingController();
 
   File? _imageFile;
+  String? _uploadedImageUrl;
   LatLng? _pickupLatLng;
   LatLng? _dropLatLng;
   bool _loading = false;
@@ -33,11 +35,9 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
   String? selectedReceiverPhone;
   String? selectedReceiverAddress;
 
-  // ✅ ดึง users ทั้งหมด
   Stream<QuerySnapshot> get receiversStream =>
       FirebaseFirestore.instance.collection('users').snapshots();
 
-  // ✅ ดึงข้อมูลของผู้ใช้ปัจจุบัน (ผู้ส่ง)
   Future<Map<String, dynamic>?> _getCurrentUserData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
@@ -48,13 +48,12 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
     return doc.data();
   }
 
-  // ✅ แปลงพิกัดเป็นชื่อที่อยู่
   Future<String> _getAddressFromLatLng(double lat, double lng) async {
     try {
       final placemarks = await placemarkFromCoordinates(lat, lng);
       if (placemarks.isNotEmpty) {
         final p = placemarks.first;
-        return "${p.street ?? ''} ${p.subLocality ?? ''} ${p.locality ?? ''} ${p.administrativeArea ?? ''}"
+        return "${p.street ?? ''} ${p.locality ?? ''} ${p.administrativeArea ?? ''}"
             .trim();
       }
       return "ไม่พบที่อยู่";
@@ -63,8 +62,15 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
     }
   }
 
-  // 📍 ใช้พิกัดของผู้ส่งจาก Firestore
-  Future<void> _useMyDefaultAddress() async {
+  // 📸 ถ่ายรูป
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.camera);
+    if (picked != null) setState(() => _imageFile = File(picked.path));
+  }
+
+  // 📍 เลือกพิกัดที่อยู่ของผู้ส่ง
+  Future<void> _selectMySavedAddress() async {
     final userData = await _getCurrentUserData();
     if (userData == null) return;
 
@@ -72,20 +78,109 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
         List<Map<String, dynamic>>.from(userData['addresses'] ?? []);
     if (addresses.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("❌ คุณยังไม่มีที่อยู่ในโปรไฟล์")),
-      );
+          const SnackBar(content: Text("❌ ไม่มีที่อยู่ในโปรไฟล์")));
       return;
     }
 
-    final addr = addresses.first; // ใช้ที่อยู่แรก
-    setState(() {
-      _pickupAddressCtl.text = addr['address'];
-      _pickupLatLng = LatLng(addr['lat'], addr['lng']);
-    });
+    int? selectedIndex;
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("เลือกที่อยู่ของคุณ"),
+        content: DropdownButtonFormField<int>(
+          isExpanded: true,
+          value: selectedIndex,
+          items: List.generate(addresses.length, (i) {
+            final addr = addresses[i];
+            return DropdownMenuItem(
+              value: i,
+              child: Text(addr['address'], overflow: TextOverflow.ellipsis),
+            );
+          }),
+          onChanged: (val) => selectedIndex = val,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("ยกเลิก"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (selectedIndex != null) {
+                final addr = addresses[selectedIndex!];
+                setState(() {
+                  _pickupAddressCtl.text = addr['address'];
+                  _pickupLatLng = LatLng(addr['lat'], addr['lng']);
+                });
+              }
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text("ยืนยัน"),
+          ),
+        ],
+      ),
+    );
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text("✅ ใช้ที่อยู่เริ่มต้นของคุณเป็นจุดรับสินค้า")),
+  // 📍 เลือกที่อยู่ของผู้รับ
+  Future<void> _selectReceiverSavedAddress() async {
+    if (selectedReceiverId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("⚠️ กรุณาเลือกผู้รับก่อน")));
+      return;
+    }
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(selectedReceiverId)
+        .get();
+    final data = doc.data();
+    if (data == null || data['addresses'] == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("❌ ผู้รับไม่มีที่อยู่ในระบบ")));
+      return;
+    }
+
+    final addresses = List<Map<String, dynamic>>.from(data['addresses']);
+    int? selectedIndex;
+
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("เลือกที่อยู่ของผู้รับ"),
+        content: DropdownButtonFormField<int>(
+          isExpanded: true,
+          value: selectedIndex,
+          items: List.generate(addresses.length, (i) {
+            final addr = addresses[i];
+            return DropdownMenuItem(
+              value: i,
+              child: Text(addr['address'], overflow: TextOverflow.ellipsis),
+            );
+          }),
+          onChanged: (val) => selectedIndex = val,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("ยกเลิก"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (selectedIndex != null) {
+                final addr = addresses[selectedIndex!];
+                setState(() {
+                  _dropAddressCtl.text = addr['address'];
+                  _dropLatLng = LatLng(addr['lat'], addr['lng']);
+                });
+              }
+              Navigator.pop(context);
+            },
+            child: const Text("ยืนยัน"),
+          ),
+        ],
+      ),
     );
   }
 
@@ -144,12 +239,6 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
     );
   }
 
-  // 📸 ถ่ายรูปพัสดุ
-  Future<void> _pickImage() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.camera);
-    if (picked != null) setState(() => _imageFile = File(picked.path));
-  }
-
   // ✅ สร้างออเดอร์
   Future<void> _createOrder() async {
     if (selectedReceiverId == null ||
@@ -157,8 +246,7 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
         _dropAddressCtl.text.isEmpty ||
         _priceCtl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ กรุณากรอกข้อมูลให้ครบ")),
-      );
+          const SnackBar(content: Text("⚠️ กรุณากรอกข้อมูลให้ครบ")));
       return;
     }
 
@@ -171,6 +259,16 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
           .get();
       final userData = userDoc.data() ?? {};
 
+      // ✅ Upload รูปไป Cloudinary ก่อน (ถ้ามี)
+      String? imageUrl;
+      if (_imageFile != null) {
+        imageUrl = await CloudinaryService.uploadImage(
+          file: _imageFile!,
+          folder: "delivery/orders",
+        );
+        _uploadedImageUrl = imageUrl;
+      }
+
       await FirebaseFirestore.instance.collection("deliveryRecords").add({
         "userId": user.uid,
         "userName": userData['name'] ?? 'ไม่ระบุ',
@@ -182,21 +280,20 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
         "receiverId": selectedReceiverId,
         "receiverName": selectedReceiverName,
         "receiverPhone": selectedReceiverPhone,
-        "receiverAddress": selectedReceiverAddress ?? '-',
-        "dropAddress": _dropAddressCtl.text,
+        "receiverAddress": _dropAddressCtl.text,
         "dropLatLng": _dropLatLng != null
             ? "${_dropLatLng!.latitude},${_dropLatLng!.longitude}"
             : "-",
         "details": _detailCtl.text,
         "price": double.tryParse(_priceCtl.text) ?? 0.0,
         "status": "รอไรเดอร์รับงาน",
+        "imageUrl": imageUrl ?? '',
         "createdAt": FieldValue.serverTimestamp(),
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("✅ สร้างออเดอร์สำเร็จ")),
       );
-
       widget.onOrderCreated?.call();
     } catch (e) {
       ScaffoldMessenger.of(context)
@@ -209,117 +306,46 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("สร้างออเดอร์ใหม่"),
-        backgroundColor: Colors.green,
-      ),
+          title: const Text("สร้างออเดอร์ใหม่"), backgroundColor: Colors.green),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildTitle("เลือกผู้รับสินค้า"),
-            StreamBuilder<QuerySnapshot>(
-              stream: receiversStream,
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final users = snapshot.data!.docs;
-                final filtered = users.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final phone = data['phone'] ?? '';
-                  return phone.contains(_searchPhoneCtl.text.trim());
-                }).toList();
-
-                return Column(
-                  children: [
-                    TextField(
-                      controller: _searchPhoneCtl,
-                      decoration: const InputDecoration(
-                        hintText: "ค้นหาผู้รับโดยเบอร์โทรศัพท์",
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        hintText: "เลือกผู้รับ",
-                      ),
-                      value: selectedReceiverId,
-                      items: filtered.map((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        return DropdownMenuItem(
-                          value: doc.id,
-                          child: Text("${data['name']} (${data['phone']})"),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        final user = users.firstWhere((u) => u.id == val);
-                        final data = user.data() as Map<String, dynamic>;
-                        final addresses = List<Map<String, dynamic>>.from(
-                            data['addresses'] ?? []);
-                        final addr =
-                            addresses.isNotEmpty ? addresses.first : null;
-
-                        setState(() {
-                          selectedReceiverId = val;
-                          selectedReceiverName = data['name'];
-                          selectedReceiverPhone = data['phone'];
-                          selectedReceiverAddress = addr?['address'] ?? '-';
-                          if (addr != null) {
-                            _dropAddressCtl.text = addr['address'];
-                            _dropLatLng = LatLng(addr['lat'], addr['lng']);
-                          }
-                        });
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            _buildTitle("จุดรับสินค้า (ผู้ส่ง)"),
-            TextField(
-              controller: _pickupAddressCtl,
-              readOnly: true,
-              decoration: InputDecoration(
-                hintText: "แตะปุ่มเพื่อเลือกที่อยู่",
-                border: const OutlineInputBorder(),
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.home, color: Colors.green),
-                      tooltip: "ใช้ที่อยู่ของฉัน",
-                      onPressed: _useMyDefaultAddress,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.my_location, color: Colors.orange),
-                      onPressed: () => _getCurrentLocation(true),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.map, color: Colors.blue),
-                      onPressed: () => _openMapPicker(true),
-                    ),
-                  ],
+            _buildTitle("รูปพัสดุ"),
+            Center(
+              child: GestureDetector(
+                onTap: _pickImage,
+                child: CircleAvatar(
+                  radius: 60,
+                  backgroundColor: Colors.grey.shade200,
+                  backgroundImage:
+                      _imageFile != null ? FileImage(_imageFile!) : null,
+                  child: _imageFile == null
+                      ? const Icon(Icons.camera_alt,
+                          color: Colors.green, size: 40)
+                      : null,
                 ),
               ),
             ),
             const SizedBox(height: 20),
-            _buildAddressSection(
-                "จุดส่งสินค้า (ผู้รับ)", _dropAddressCtl, false),
+            _buildTitle("เลือกผู้รับสินค้า"),
+            _buildReceiverSelection(),
+            const SizedBox(height: 20),
+            _buildTitle("จุดรับสินค้า (ผู้ส่ง)"),
+            _buildAddressField(_pickupAddressCtl, true, _selectMySavedAddress),
+            const SizedBox(height: 20),
+            _buildTitle("จุดส่งสินค้า (ผู้รับ)"),
+            _buildAddressField(
+                _dropAddressCtl, false, _selectReceiverSavedAddress),
             const SizedBox(height: 20),
             _buildTitle("รายละเอียดเพิ่มเติม"),
             TextField(
               controller: _detailCtl,
               maxLines: 3,
               decoration: const InputDecoration(
-                hintText: "รายละเอียดพัสดุหรือคำแนะนำ",
-                border: OutlineInputBorder(),
-              ),
+                  hintText: "รายละเอียดพัสดุหรือคำแนะนำ",
+                  border: OutlineInputBorder()),
             ),
             const SizedBox(height: 20),
             _buildTitle("ค่าใช้จ่าย (บาท)"),
@@ -327,19 +353,16 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
               controller: _priceCtl,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                hintText: "เช่น 100",
-                border: OutlineInputBorder(),
-              ),
+                  hintText: "เช่น 100", border: OutlineInputBorder()),
             ),
             const SizedBox(height: 30),
             Center(
               child: ElevatedButton(
                 onPressed: _loading ? null : _createOrder,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-                ),
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 40, vertical: 14)),
                 child: _loading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text("สร้างออเดอร์"),
@@ -351,40 +374,100 @@ class _CreateOrderFormState extends State<CreateOrderForm> {
     );
   }
 
+  Widget _buildReceiverSelection() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: receiversStream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final users = snapshot.data!.docs;
+        final filtered = users.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final phone = data['phone'] ?? '';
+          return phone.contains(_searchPhoneCtl.text.trim());
+        }).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _searchPhoneCtl,
+              decoration: const InputDecoration(
+                hintText: "ค้นหาผู้รับโดยเบอร์โทรศัพท์",
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: "เลือกผู้รับ",
+              ),
+              value: selectedReceiverId,
+              items: filtered.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return DropdownMenuItem(
+                  value: doc.id,
+                  child: Text(
+                    "${data['name']} (${data['phone']})",
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
+              onChanged: (val) {
+                final user = users.firstWhere((u) => u.id == val);
+                final data = user.data() as Map<String, dynamic>;
+                setState(() {
+                  selectedReceiverId = val;
+                  selectedReceiverName = data['name'];
+                  selectedReceiverPhone = data['phone'];
+                });
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildTitle(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: Text(text,
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       );
 
-  Widget _buildAddressSection(
-      String title, TextEditingController ctl, bool isPickup) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildTitle(title),
-        TextField(
-          controller: ctl,
-          readOnly: true,
-          decoration: InputDecoration(
-            hintText: "แตะเพื่อเลือกที่อยู่",
-            border: const OutlineInputBorder(),
-            suffixIcon: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.my_location, color: Colors.orange),
-                  onPressed: () => _getCurrentLocation(isPickup),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.map, color: Colors.blue),
-                  onPressed: () => _openMapPicker(isPickup),
-                ),
-              ],
+  Widget _buildAddressField(
+      TextEditingController ctl, bool isPickup, Function selectAddress) {
+    return TextField(
+      controller: ctl,
+      readOnly: true,
+      decoration: InputDecoration(
+        hintText: "แตะปุ่มเพื่อเลือกที่อยู่",
+        border: const OutlineInputBorder(),
+        suffixIcon: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.home, color: Colors.green),
+              tooltip: isPickup
+                  ? "เลือกจากที่อยู่ของฉัน"
+                  : "เลือกจากที่อยู่ของผู้รับ",
+              onPressed: () => selectAddress(),
             ),
-          ),
+            IconButton(
+              icon: const Icon(Icons.my_location, color: Colors.orange),
+              onPressed: () => _getCurrentLocation(isPickup),
+            ),
+            IconButton(
+              icon: const Icon(Icons.map, color: Colors.blue),
+              onPressed: () => _openMapPicker(isPickup),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

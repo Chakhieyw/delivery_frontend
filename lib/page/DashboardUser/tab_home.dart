@@ -45,11 +45,16 @@ class HomeTab extends StatelessWidget {
             itemCount: orders.length,
             itemBuilder: (context, index) {
               final doc = orders[index];
-              final pickup = doc['pickupAddress'] ?? '-';
-              final drop = doc['dropAddress'] ?? '-';
-              final price = doc['price']?.toString() ?? '0';
-              final status = doc['status'] ?? 'รอไรเดอร์รับงาน';
-              final createdAt = (doc['createdAt'] as Timestamp?)?.toDate();
+              final data =
+                  doc.data() as Map<String, dynamic>; // ✅ ปลอดภัยจาก field หาย
+
+              final pickup = data['pickupAddress'] ?? '-';
+              final drop = data['dropAddress'] ??
+                  data['receiverAddress'] ??
+                  '-'; // ✅ fallback ป้องกัน error
+              final price = data['price']?.toString() ?? '0';
+              final status = data['status'] ?? 'รอไรเดอร์รับงาน';
+              final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
               final orderId = doc.id;
 
               return Container(
@@ -101,7 +106,8 @@ class HomeTab extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
-                          "📅 ${createdAt.day}/${createdAt.month}/${createdAt.year} • ${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}",
+                          "📅 ${createdAt.day}/${createdAt.month}/${createdAt.year} • "
+                          "${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}",
                           style: const TextStyle(
                               fontSize: 12, color: Colors.black54),
                         ),
@@ -178,8 +184,10 @@ class HomeTab extends StatelessWidget {
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
-                          child: const Text("ติดตาม",
-                              style: TextStyle(color: Colors.white)),
+                          child: const Text(
+                            "ติดตาม",
+                            style: TextStyle(color: Colors.white),
+                          ),
                         ),
                       ],
                     ),
