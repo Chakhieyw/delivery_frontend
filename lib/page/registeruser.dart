@@ -4,14 +4,13 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:delivery_frontend/page/login_user.dart';
 import 'package:delivery_frontend/page/MapPickerPage.dart';
 import 'package:delivery_frontend/services/cloudinary_service.dart';
-import 'package:geocoding/geocoding.dart';
 
 class RegisterUserPage extends StatefulWidget {
   const RegisterUserPage({super.key});
@@ -40,6 +39,7 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
     if (picked != null) setState(() => _imageFile = File(picked.path));
   }
 
+  /// ✅ แปลงพิกัดเป็นที่อยู่
   Future<void> _getAddressFromLatLng(LatLng? position) async {
     if (position == null) return;
 
@@ -52,7 +52,6 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
 
-        // ✅ ป้องกัน null อย่างสมบูรณ์
         final String street = (place.street != null && place.street!.isNotEmpty)
             ? place.street!
             : (place.subLocality?.isNotEmpty ?? false)
@@ -154,21 +153,32 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
       final email = _emailCtl.text.trim();
       final password = _passwordCtl.text.trim();
 
+      // ✅ สร้างบัญชีใน Firebase Auth
       UserCredential user = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
 
-      String imageUrl = "";
+      String? imageUrl;
 
+      // ✅ อัปโหลดรูปโปรไฟล์ขึ้น Cloudinary (ถ้ามีรูป)
       if (_imageFile != null) {
-        final cloudinary = CloudinaryService();
         try {
-          imageUrl = await cloudinary.uploadFile(_imageFile!);
-          debugPrint("✅ อัปโหลดขึ้น Cloudinary สำเร็จ: $imageUrl");
+          imageUrl = await CloudinaryService.uploadImage(
+            fromCamera: false,
+            folder: "profiles",
+          );
+
+          if (imageUrl != null && imageUrl.isNotEmpty) {
+            debugPrint("✅ อัปโหลดขึ้น Cloudinary สำเร็จ: $imageUrl");
+          } else {
+            debugPrint(
+                "⚠️ ไม่สามารถอัปโหลดรูปขึ้น Cloudinary ได้ (imageUrl ว่าง)");
+          }
         } catch (e) {
           debugPrint("❌ อัปโหลดรูปไป Cloudinary ล้มเหลว: $e");
         }
       }
 
+      // ✅ บันทึกข้อมูลผู้ใช้ลง Firestore
       await FirebaseFirestore.instance
           .collection("users")
           .doc(user.user!.uid)
@@ -178,7 +188,7 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
         "phone": _phoneCtl.text.trim(),
         "address": _addressCtl.text.trim(),
         "role": "user",
-        "imageUrl": imageUrl,
+        "imageUrl": imageUrl ?? "",
         "password": _passwordCtl.text.trim(),
         "location": {
           "lat": _selectedPosition?.latitude,
@@ -235,7 +245,6 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
               _buildTextField(_passwordCtl, Icons.lock, "รหัสผ่าน", true),
               _buildTextField(
                   _confirmCtl, Icons.lock_outline, "ยืนยันรหัสผ่าน", true),
-
               const SizedBox(height: 10),
               GestureDetector(
                 onTap: _pickImage,
@@ -249,10 +258,7 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
                       : null,
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              // ปุ่มเลือกตำแหน่ง
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -273,10 +279,7 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 10),
-
-              // แสดง mini map
               if (_selectedPosition != null) ...[
                 Text(
                   "พิกัดที่เลือก: ${_selectedPosition!.latitude.toStringAsFixed(5)}, ${_selectedPosition!.longitude.toStringAsFixed(5)}",
@@ -293,7 +296,7 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
                     children: [
                       TileLayer(
                         urlTemplate:
-                            'https://tile.thunderforest.com/atlas/{z}/{x}/{y}.png?apikey=12183dd51e894a75b97d6786c14a83ac',
+                            'https://tile.thunderforest.com/atlas/{z}/{x}/{y}.png?apikey=$_apiKey',
                         userAgentPackageName: 'com.example.delivery_frontend',
                       ),
                       MarkerLayer(
@@ -317,7 +320,6 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
                   style: TextStyle(color: Colors.grey),
                 ),
               ],
-
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -361,7 +363,6 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 30),
             ],
           ),
