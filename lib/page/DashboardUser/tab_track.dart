@@ -74,10 +74,59 @@ class _TrackTabState extends State<TrackTab> {
           final dropLatLng = _parseLatLng(data['dropLatLng']);
           final step = _getStatusStep(status);
 
+          // 🟡 ถ้ายังไม่มีไรเดอร์รับงาน → แสดงสถานะรอไรเดอร์ + รายละเอียด shipment
           if (riderId == null || riderId.isEmpty) {
-            return const Center(child: Text("ยังไม่มีไรเดอร์รับงานนี้"));
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "สถานะการจัดส่ง",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 20),
+                  _buildTimeline(step),
+                  const SizedBox(height: 20),
+
+                  // 🔹 การ์ดสถานะรอไรเดอร์
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.timer, color: Colors.orange),
+                        SizedBox(height: 8),
+                        Text(
+                          "กำลังรอไรเดอร์รับงาน...",
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          "ออเดอร์ของคุณถูกสร้างเรียบร้อยแล้ว โปรดรอไรเดอร์รับงาน",
+                          style: TextStyle(color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 25),
+
+                  // 🔹 รายละเอียด Shipment
+                  _buildShipmentDetailCard(data, status),
+                ],
+              ),
+            );
           }
 
+          // ✅ ถ้ามีไรเดอร์แล้ว → แสดงข้อมูลไรเดอร์ + แผนที่
           final riderStream = FirebaseFirestore.instance
               .collection('riders')
               .doc(riderId)
@@ -113,7 +162,7 @@ class _TrackTabState extends State<TrackTab> {
                     _buildTimeline(step),
                     const SizedBox(height: 20),
 
-                    // 🔹 แผนที่ของ Shipment ปัจจุบัน
+                    // 🔹 แผนที่ Real-time
                     Container(
                       height: 220,
                       width: double.infinity,
@@ -222,55 +271,7 @@ class _TrackTabState extends State<TrackTab> {
                     const SizedBox(height: 25),
 
                     // 🔹 รายละเอียด Shipment
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 6,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.local_shipping, color: Colors.green),
-                              SizedBox(width: 8),
-                              Text(
-                                "รายละเอียด Shipment",
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Text("👤 ผู้รับ: ${data['receiverName'] ?? '-'}"),
-                          Text(
-                              "📞 เบอร์โทรผู้รับ: ${data['receiverPhone'] ?? '-'}"),
-                          Text("📍 พิกัดผู้รับ: ${data['dropAddress'] ?? '-'}"),
-                          const SizedBox(height: 10),
-                          Text(
-                            "สถานะล่าสุด: $status",
-                            style: const TextStyle(
-                                color: Colors.green,
-                                fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            "วันที่สร้าง: ${(data['createdAt'] as Timestamp?)?.toDate().toString().split('.').first ?? '-'}",
-                            style: const TextStyle(
-                                color: Colors.grey, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
+                    _buildShipmentDetailCard(data, status),
                   ],
                 ),
               );
@@ -291,8 +292,10 @@ class _TrackTabState extends State<TrackTab> {
         return 1;
       case 'ไรเดอร์รับสินค้าแล้ว':
         return 2;
-      case 'ไรเดอร์นำส่งสินค้าแล้ว':
+      case 'ไรเดอร์กำลังนำส่งสินค้าแล้ว':
         return 3;
+      case 'จัดส่งสำเร็จ':
+        return 4;
       default:
         return 0;
     }
@@ -313,7 +316,8 @@ class _TrackTabState extends State<TrackTab> {
       "สร้างออเดอร์สำเร็จ",
       "ไรเดอร์รับงานแล้ว",
       "ไรเดอร์รับสินค้าแล้ว",
-      "ไรเดอร์นำส่งสินค้าแล้ว",
+      "ไรเดอร์กำลังนำส่งสินค้าแล้ว",
+      "จัดส่งสำเร็จ",
     ];
 
     return Column(
@@ -357,6 +361,54 @@ class _TrackTabState extends State<TrackTab> {
           ),
         );
       }),
+    );
+  }
+
+  Widget _buildShipmentDetailCard(Map<String, dynamic> data, String status) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.local_shipping, color: Colors.green),
+              SizedBox(width: 8),
+              Text(
+                "รายละเอียด Shipment",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text("👤 ผู้รับ: ${data['receiverName'] ?? '-'}"),
+          Text("📞 เบอร์โทรผู้รับ: ${data['receiverPhone'] ?? '-'}"),
+          Text("📍 พิกัดผู้รับ: ${data['dropAddress'] ?? '-'}"),
+          const SizedBox(height: 10),
+          Text(
+            "สถานะล่าสุด: $status",
+            style: const TextStyle(
+                color: Colors.green, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "วันที่สร้าง: ${(data['createdAt'] as Timestamp?)?.toDate().toString().split('.').first ?? '-'}",
+            style: const TextStyle(color: Colors.grey, fontSize: 13),
+          ),
+        ],
+      ),
     );
   }
 }

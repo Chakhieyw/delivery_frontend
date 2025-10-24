@@ -1,13 +1,16 @@
-import 'package:delivery_frontend/page/DashboardUser/all_riders_map_page.dart';
+import 'package:delivery_frontend/page/DashboardUser/receiver_shipments_list_page.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+// 🔹 Tabs (Sender + Receiver)
+import 'package:delivery_frontend/page/DashboardUser/tab_home.dart';
+import 'package:delivery_frontend/page/DashboardUser/tab_track.dart';
 import 'package:delivery_frontend/page/DashboardUser/tab_create_order.dart';
 import 'package:delivery_frontend/page/DashboardUser/tab_history.dart';
-import 'package:delivery_frontend/page/DashboardUser/tab_home.dart';
 import 'package:delivery_frontend/page/DashboardUser/tab_profile.dart';
-import 'package:delivery_frontend/page/DashboardUser/tab_track.dart';
+
 import 'package:delivery_frontend/page/login_user.dart';
-import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class DashboardUserPage extends StatefulWidget {
   const DashboardUserPage({super.key});
@@ -25,32 +28,20 @@ class _DashboardUserPageState extends State<DashboardUserPage>
   @override
   void initState() {
     super.initState();
-    // ✅ มี 5 แท็บ (Home, Track, Create, History, Profile)
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this); // ✅ มี 6 แท็บ
 
-    // ✅ รีเซ็ต selectedOrderId เมื่อออกจากแท็บติดตาม
+    // ✅ ถ้าเปลี่ยนแท็บอื่นให้รีเซ็ตการติดตาม
     _tabController.addListener(() {
-      if (_tabController.index != 1 && selectedOrderId != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() {
-              selectedOrderId = null;
-            });
-          }
-        });
+      if (_tabController.index != 2 && selectedOrderId != null) {
+        setState(() => selectedOrderId = null);
       }
     });
   }
 
-  // ✅ ฟังก์ชันเปลี่ยนไปแท็บติดตามพร้อมส่ง orderId
   void goToTrackTab(String orderId) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {
-          selectedOrderId = orderId;
-          _tabController.animateTo(1); // ✅ เปลี่ยนไปแท็บ "ติดตาม"
-        });
-      }
+    setState(() {
+      selectedOrderId = orderId;
+      _tabController.animateTo(2); // ✅ index 2 = ติดตาม
     });
   }
 
@@ -76,19 +67,13 @@ class _DashboardUserPageState extends State<DashboardUserPage>
 
     if (confirm != true) return;
 
-    try {
-      await FirebaseAuth.instance.signOut();
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginUserPage()),
-        (route) => false,
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("ออกจากระบบไม่สำเร็จ: $e")),
-      );
-    }
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginUserPage()),
+      (route) => false,
+    );
   }
 
   @override
@@ -100,7 +85,6 @@ class _DashboardUserPageState extends State<DashboardUserPage>
       );
     }
 
-    // ✅ ดึงข้อมูลผู้ใช้จาก Firestore
     final userStream = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -122,11 +106,12 @@ class _DashboardUserPageState extends State<DashboardUserPage>
         return Scaffold(
           backgroundColor: Colors.grey.shade100,
           appBar: AppBar(
-            backgroundColor: Colors.green,
+            backgroundColor: Colors.green.shade700,
             automaticallyImplyLeading: false,
             title: Row(
               children: [
                 CircleAvatar(
+                  radius: 18,
                   backgroundColor: Colors.white,
                   backgroundImage:
                       (userImage.isNotEmpty) ? NetworkImage(userImage) : null,
@@ -144,33 +129,23 @@ class _DashboardUserPageState extends State<DashboardUserPage>
                   ),
                 ),
                 const Spacer(),
-                // 🔹 ปุ่มดูแผนที่รวมไรเดอร์ทั้งหมด
                 IconButton(
-                  icon: const Icon(Icons.map_outlined, color: Colors.white),
-                  tooltip: "ดูไรเดอร์ทั้งหมดบนแผนที่",
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const AllRidersMapPage()),
-                    );
-                  },
+                  icon: const Icon(Icons.logout, color: Colors.white),
+                  tooltip: "ออกจากระบบ",
+                  onPressed: _logout,
                 ),
-                // 🔹 ปุ่มออกจากระบบ
-                IconButton(
-                    icon: const Icon(Icons.logout, color: Colors.white),
-                    tooltip: "ออกจากระบบ",
-                    onPressed: _logout),
               ],
             ),
             bottom: TabBar(
               controller: _tabController,
               labelColor: Colors.white,
               unselectedLabelColor: Colors.white70,
-              indicatorColor: Colors.orange,
+              indicatorColor: Colors.orangeAccent,
               indicatorWeight: 3,
+              isScrollable: false,
               tabs: const [
-                Tab(icon: Icon(Icons.home), text: "หน้าหลัก"),
+                Tab(icon: Icon(Icons.send), text: "สินค้าที่ส่งออก"),
+                Tab(icon: Icon(Icons.inventory_2), text: "สินค้าที่จะได้รับ"),
                 Tab(icon: Icon(Icons.location_on), text: "ติดตาม"),
                 Tab(icon: Icon(Icons.add_box), text: "สร้าง"),
                 Tab(icon: Icon(Icons.history), text: "ประวัติ"),
@@ -179,28 +154,28 @@ class _DashboardUserPageState extends State<DashboardUserPage>
             ),
           ),
 
-          // 🔹 เนื้อหาทุกแท็บ
+          // 🔹 ส่วนแสดงเนื้อหาแต่ละแท็บ
           body: TabBarView(
             controller: _tabController,
             children: [
-              // ✅ หน้า Home ส่ง callback กลับมาเปลี่ยนแท็บ
+              // 🟢 สินค้าที่ส่งออก (Sender)
               HomeTab(onTrackPressed: goToTrackTab),
 
-              // ✅ สร้าง TabTrack ใหม่ทุกครั้งเมื่อ selectedOrderId เปลี่ยน
-              Builder(
-                builder: (context) =>
-                    TrackTab(selectedOrderId: selectedOrderId),
-              ),
+              // 🟣 สินค้าที่จะได้รับ (Receiver)
+              ReceiverShipmentsListPage(onTrackPressed: goToTrackTab),
 
-              CreateOrderForm(
-                onOrderCreated: () {
-                  setState(() {
-                    _tabController.animateTo(0);
-                  });
-                },
-              ),
+              // 🔵 ติดตาม (Track)
+              TrackTab(selectedOrderId: selectedOrderId ?? ''),
 
+              // 🟠 สร้างออเดอร์ใหม่
+              CreateOrderForm(onOrderCreated: () {
+                setState(() => _tabController.animateTo(0));
+              }),
+
+              // ⚫ ประวัติ
               const HistoryTab(),
+
+              // ⚪ โปรไฟล์
               const ProfileTab(),
             ],
           ),
