@@ -204,22 +204,17 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
     }
 
     final isPickup = currentStatus == "ไรเดอร์รับงาน";
-    final nextStatus =
-        isPickup ? "ไรเดอร์รับสินค้าแล้ว" : "ไรเดอร์นำส่งสินค้าแล้ว";
+    // ✅ แก้สถานะสุดท้ายให้เป็น “จัดส่งสำเร็จ”
+    final nextStatus = isPickup ? "ไรเดอร์รับสินค้าแล้ว" : "จัดส่งสำเร็จ";
     final imageField = isPickup ? "pickupProofUrl" : "deliveryProofUrl";
 
     String? proofUrl = await _uploadProof(orderId, isPickup);
     if (proofUrl == null) return;
 
-    await _firestore.runTransaction((transaction) async {
-      final docRef = _firestore.collection('deliveryRecords').doc(orderId);
-      final snapshot = await transaction.get(docRef);
-      if (!snapshot.exists) return;
-      transaction.update(docRef, {
-        'status': nextStatus,
-        imageField: proofUrl,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+    await _firestore.collection('deliveryRecords').doc(orderId).update({
+      'status': nextStatus,
+      imageField: proofUrl,
+      'updatedAt': FieldValue.serverTimestamp(),
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -328,12 +323,12 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
             final orderId = deliveries[index].id;
 
             final pickupAddress = d['pickupAddress'] ?? '-';
-            final dropAddress = d['dropAddress'] ?? '-';
+            final dropAddress = d['receiverAddress'] ?? '-';
             final userName = d['userName'] ?? 'ไม่ระบุชื่อผู้ส่ง';
             final userPhone = d['userPhone'] ?? '-';
             final receiverName = d['receiverName'] ?? 'ไม่ระบุชื่อผู้รับ';
             final receiverPhone = d['receiverPhone'] ?? '-';
-            final productImageUrl = d['productImageUrl'];
+            final productImageUrl = d['imageUrl'];
             final price = d['price'] ?? 0;
             final status = d['status'] ?? '-';
             final pickupLatLng = _parseLatLng(d['pickupLatLng']);

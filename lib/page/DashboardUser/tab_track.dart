@@ -318,7 +318,7 @@ class _TrackTabState extends State<TrackTab> {
       "ไรเดอร์รับสินค้าแล้ว",
       "ไรเดอร์กำลังนำส่งสินค้าแล้ว",
       "จัดส่งสำเร็จ",
-    ]; 
+    ];
     return Column(
       children: List.generate(steps.length, (index) {
         final isActive = index <= step;
@@ -394,7 +394,7 @@ class _TrackTabState extends State<TrackTab> {
           const SizedBox(height: 10),
           Text("👤 ผู้รับ: ${data['receiverName'] ?? '-'}"),
           Text("📞 เบอร์โทรผู้รับ: ${data['receiverPhone'] ?? '-'}"),
-          Text("📍 พิกัดผู้รับ: ${data['dropAddress'] ?? '-'}"),
+          Text("📍 พิกัดผู้รับ: ${data['receiverAddress'] ?? '-'}"),
           const SizedBox(height: 10),
           Text(
             "สถานะล่าสุด: $status",
