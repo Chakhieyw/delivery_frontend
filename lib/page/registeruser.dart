@@ -143,6 +143,7 @@ class _RegisterUserPageState extends State<RegisterUserPage> {
       if (_imageFile != null) {
         imageUrl = await CloudinaryService.uploadImage(
               fromCamera: false,
+              file: _imageFile, // ✅ ส่งไฟล์ที่เลือกไป
               folder: "profiles",
             ) ??
             "";

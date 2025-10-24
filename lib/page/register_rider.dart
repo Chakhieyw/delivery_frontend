@@ -48,12 +48,14 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
       UserCredential user = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
 
-      String? imageUrl;
+      String imageUrl = "";
       if (_imageFile != null) {
         imageUrl = await CloudinaryService.uploadImage(
-          fromCamera: false,
-          folder: "profiles",
-        );
+              fromCamera: false,
+              file: _imageFile, // ✅ ส่งไฟล์ที่เลือกไป
+              folder: "profiles",
+            ) ??
+            "";
       }
 
       await FirebaseFirestore.instance
