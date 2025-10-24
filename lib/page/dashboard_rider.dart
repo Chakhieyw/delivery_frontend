@@ -2,9 +2,9 @@ import 'package:delivery_frontend/page/DashboardRider/rider_history_page.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:delivery_frontend/page/select_role.dart';
-import 'package:delivery_frontend/page/rider_pending_orders.dart';
-import 'package:delivery_frontend/page/rider_delivering_page.dart';
-import 'package:delivery_frontend/page/profile_rider.dart';
+import 'package:delivery_frontend/page/DashboardRider/rider_pending_orders.dart';
+import 'package:delivery_frontend/page/DashboardRider/rider_delivering_page.dart';
+import 'package:delivery_frontend/page/DashboardRider/profile_rider.dart';
 
 class DashboardRiderPage extends StatefulWidget {
   const DashboardRiderPage({super.key});

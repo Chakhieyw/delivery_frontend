@@ -21,10 +21,11 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
   final _auth = FirebaseAuth.instance;
   final _picker = ImagePicker();
   final MapController _mapController = MapController();
-
   File? _imageFile;
   bool _isUploading = false;
   Timer? _locationTimer;
+  LatLng? _currentRiderPos;
+  double? _currentDistance;
 
   @override
   void initState() {
@@ -58,17 +59,18 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
         final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.best,
         );
+        _currentRiderPos = LatLng(pos.latitude, pos.longitude);
         await _firestore.collection('riders').doc(rider.uid).update({
           'lat': pos.latitude,
           'lng': pos.longitude,
         });
 
+        // ✅ อัปเดตตำแหน่งในทุกออเดอร์ที่กำลังทำ
         final activeOrders = await _firestore
             .collection('deliveryRecords')
             .where('riderId', isEqualTo: rider.uid)
             .where('status',
                 whereIn: ['ไรเดอร์รับงาน', 'ไรเดอร์รับสินค้าแล้ว']).get();
-
         for (final doc in activeOrders.docs) {
           await doc.reference.update({
             'riderLat': pos.latitude,
@@ -76,10 +78,7 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
           });
         }
 
-        if (mounted) {
-          _mapController.move(
-              LatLng(pos.latitude, pos.longitude), _mapController.camera.zoom);
-        }
+        if (mounted) setState(() {});
       } catch (_) {}
     });
   }
@@ -128,73 +127,94 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
     );
   }
 
-  // ✅ อัปโหลดหลักฐานขึ้น Firebase Storage (ล้มเหลวไม่หยุดการทำงาน)
+  // ✅ ตรวจว่าห่างจากจุดรับสินค้าน้อยกว่า 20 เมตร
+  Future<bool> _isWithinDistance(LatLng? pickupLatLng) async {
+    if (pickupLatLng == null) return true;
+    final pos = await Geolocator.getCurrentPosition();
+    final dist = Geolocator.distanceBetween(
+      pos.latitude,
+      pos.longitude,
+      pickupLatLng.latitude,
+      pickupLatLng.longitude,
+    );
+    setState(() => _currentDistance = dist);
+    return dist <= 20;
+  }
+
+  // ✅ อัปโหลดหลักฐานขึ้น Firebase Storage
   Future<String?> _uploadProof(String orderId, bool isPickup) async {
     if (_imageFile == null) return null;
     setState(() => _isUploading = true);
     try {
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName =
-          isPickup ? "pickup_$timestamp.jpg" : "delivery_$timestamp.jpg";
+          "${isPickup ? "pickup" : "delivery"}_${DateTime.now().millisecondsSinceEpoch}.jpg";
       final ref = FirebaseStorage.instance
           .ref()
           .child('deliveryProofs/$orderId/$fileName');
       await ref.putFile(_imageFile!);
-      return await ref.getDownloadURL();
-    } catch (e) {
-      debugPrint("❌ uploadProof ล้มเหลว: $e");
+      final url = await ref.getDownloadURL();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text("⚠️ อัปโหลดรูปไม่สำเร็จ แต่จะอัปเดตสถานะต่อไป")),
+          const SnackBar(content: Text("✅ อัปโหลดรูปสำเร็จ")),
         );
       }
+      return url;
+    } catch (e) {
+      debugPrint("❌ uploadProof ล้มเหลว: $e");
       return null;
     } finally {
-      if (mounted) setState(() => _isUploading = false);
+      setState(() => _isUploading = false);
     }
   }
 
-  // ✅ ยืนยันสถานะ (รับของ / ส่งของ)
-  Future<void> _confirmStep(String orderId, String currentStatus) async {
-    bool isPickup = currentStatus == "ไรเดอร์รับงาน";
-    String nextStatus =
-        isPickup ? "ไรเดอร์รับสินค้าแล้ว" : "ไรเดอร์นำส่งสินค้าแล้ว";
-    String fieldName = isPickup ? "pickupProofUrl" : "deliveryProofUrl";
-
-    String? proofUrl;
-    try {
-      proofUrl = await _uploadProof(orderId, isPickup);
-    } catch (_) {
-      proofUrl = null;
-    }
-
-    try {
-      final updateData = {
-        'status': nextStatus,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-      if (proofUrl != null) updateData[fieldName] = proofUrl;
-
-      await _firestore
-          .collection('deliveryRecords')
-          .doc(orderId)
-          .update(updateData);
-
-      if (!mounted) return;
-
+  // ✅ ยืนยันสถานะ (บังคับรูป + ตรวจระยะ + Transaction)
+  Future<void> _confirmStep(
+      String orderId, String currentStatus, LatLng? pickupLatLng) async {
+    if (_imageFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("✅ อัปเดตสถานะเป็น $nextStatus สำเร็จ")),
+        const SnackBar(content: Text("⚠️ กรุณาถ่ายรูปก่อนยืนยัน")),
       );
-
-      setState(() => _imageFile = null);
-    } catch (e) {
-      debugPrint("❌ ERROR while updating status: $e");
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("❌ เกิดข้อผิดพลาด: $e")));
+      return;
     }
+
+    if (currentStatus == "ไรเดอร์รับงาน") {
+      bool withinRange = await _isWithinDistance(pickupLatLng);
+      if (!withinRange) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("🚫 ห่างจากจุดรับสินค้ามากกว่า 20 เมตร!")),
+        );
+        return;
+      }
+    }
+
+    final isPickup = currentStatus == "ไรเดอร์รับงาน";
+    final nextStatus =
+        isPickup ? "ไรเดอร์รับสินค้าแล้ว" : "ไรเดอร์นำส่งสินค้าแล้ว";
+    final imageField = isPickup ? "pickupProofUrl" : "deliveryProofUrl";
+
+    String? proofUrl = await _uploadProof(orderId, isPickup);
+    if (proofUrl == null) return;
+
+    await _firestore.runTransaction((transaction) async {
+      final docRef = _firestore.collection('deliveryRecords').doc(orderId);
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists) return;
+      transaction.update(docRef, {
+        'status': nextStatus,
+        imageField: proofUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("✅ อัปเดตสถานะเป็น $nextStatus สำเร็จ")),
+    );
+
+    setState(() => _imageFile = null);
   }
 
+  // ✅ สร้างแถบ Progress แสดงสถานะการจัดส่ง
   Widget _buildProgressBar(String status) {
     final steps = [
       "ไรเดอร์รับงาน",
@@ -299,8 +319,6 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
             final receiverName = d['receiverName'] ?? 'ไม่ระบุชื่อผู้รับ';
             final receiverPhone = d['receiverPhone'] ?? '-';
             final productImageUrl = d['productImageUrl'];
-            final pickupProofUrl = d['pickupProofUrl'];
-            final deliveryProofUrl = d['deliveryProofUrl'];
             final price = d['price'] ?? 0;
             final status = d['status'] ?? '-';
             final pickupLatLng = _parseLatLng(d['pickupLatLng']);
@@ -327,62 +345,92 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ✅ แถบสถานะ 3 ขั้นตอน
                   _buildProgressBar(status),
                   const SizedBox(height: 16),
-
                   Text("ออเดอร์ #$orderId",
                       style: const TextStyle(
                           color: Colors.green,
                           fontSize: 18,
                           fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
                   Text("ผู้ส่ง: $userName ($userPhone)"),
                   Text("ผู้รับ: $receiverName ($receiverPhone)"),
                   const Divider(height: 18),
-
-                  if (productImageUrl != null &&
-                      productImageUrl.toString().isNotEmpty)
+                  if (productImageUrl != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        productImageUrl,
-                        height: 160,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                      ),
+                      child: Image.network(productImageUrl,
+                          height: 160,
+                          width: double.infinity,
+                          fit: BoxFit.cover),
                     ),
                   const SizedBox(height: 10),
-
-                  if (pickupProofUrl != null)
+                  if (_currentRiderPos != null &&
+                      pickupLatLng != null &&
+                      dropLatLng != null)
                     Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text("📦 รูปตอนรับของ"),
-                        const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.network(pickupProofUrl, height: 120),
+                        SizedBox(
+                          height: 200,
+                          child: FlutterMap(
+                            mapController: _mapController,
+                            options: MapOptions(
+                              initialCenter: pickupLatLng,
+                              initialZoom: 13,
+                            ),
+                            children: [
+                              TileLayer(
+                                urlTemplate:
+                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              ),
+                              PolylineLayer(
+                                polylines: [
+                                  Polyline(
+                                    points: [pickupLatLng, dropLatLng],
+                                    strokeWidth: 4,
+                                    color: Colors.green,
+                                  ),
+                                ],
+                              ),
+                              MarkerLayer(
+                                markers: [
+                                  Marker(
+                                    point: pickupLatLng,
+                                    child: const Icon(Icons.store,
+                                        color: Colors.green, size: 35),
+                                  ),
+                                  Marker(
+                                    point: dropLatLng,
+                                    child: const Icon(Icons.location_on,
+                                        color: Colors.red, size: 35),
+                                  ),
+                                  Marker(
+                                    point: _currentRiderPos!,
+                                    child: const Icon(Icons.motorcycle,
+                                        color: Colors.blue, size: 30),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 12),
+                        if (_currentDistance != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              "📏 ระยะจากจุดรับสินค้า: ${_currentDistance!.toStringAsFixed(2)} เมตร",
+                              style: TextStyle(
+                                color: _currentDistance! <= 20
+                                    ? Colors.green
+                                    : Colors.red,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
-
-                  if (deliveryProofUrl != null)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("🚚 รูปตอนส่งของ"),
-                        const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.network(deliveryProofUrl, height: 120),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    ),
-
+                  const SizedBox(height: 8),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Icon(Icons.store, color: Colors.green),
                       const SizedBox(width: 8),
@@ -391,6 +439,7 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                   ),
                   const SizedBox(height: 8),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Icon(Icons.location_on, color: Colors.red),
                       const SizedBox(width: 8),
@@ -398,42 +447,6 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                     ],
                   ),
                   const Divider(height: 24),
-
-                  if (pickupLatLng != null && dropLatLng != null)
-                    SizedBox(
-                      height: 200,
-                      child: FlutterMap(
-                        mapController: _mapController,
-                        options: MapOptions(
-                            initialCenter: pickupLatLng, initialZoom: 13),
-                        children: [
-                          TileLayer(
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          ),
-                          MarkerLayer(
-                            markers: [
-                              Marker(
-                                point: pickupLatLng,
-                                width: 40,
-                                height: 40,
-                                child: const Icon(Icons.store,
-                                    color: Colors.green, size: 35),
-                              ),
-                              Marker(
-                                point: dropLatLng,
-                                width: 40,
-                                height: 40,
-                                child: const Icon(Icons.location_on,
-                                    color: Colors.red, size: 35),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  const SizedBox(height: 20),
                   GestureDetector(
                     onTap: _isUploading ? null : _showImageSourceDialog,
                     child: Container(
@@ -445,7 +458,7 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                       ),
                       child: _imageFile == null
                           ? const Center(
-                              child: Text("เพิ่มรูปภาพ (ไม่บังคับ)",
+                              child: Text("📸 ถ่ายรูปก่อนยืนยัน",
                                   style: TextStyle(color: Colors.green)))
                           : ClipRRect(
                               borderRadius: BorderRadius.circular(12),
@@ -457,7 +470,8 @@ class _RiderDeliveringPageState extends State<RiderDeliveringPage> {
                   _isUploading
                       ? const Center(child: CircularProgressIndicator())
                       : ElevatedButton(
-                          onPressed: () => _confirmStep(orderId, status),
+                          onPressed: () =>
+                              _confirmStep(orderId, status, pickupLatLng),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: buttonColor,
                             minimumSize: const Size.fromHeight(48),
