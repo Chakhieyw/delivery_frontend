@@ -155,13 +155,49 @@ class _RegisterRiderPageState extends State<RegisterRiderPage> {
             _buildField(_confirmCtl, "ยืนยันรหัสผ่าน", Icons.lock_outline,
                 isPassword: true),
             const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _loading ? null : _register,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              child: _loading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text("สมัคร Rider"),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 140,
+                  height: 45,
+                  child: ElevatedButton(
+                    onPressed: _loading ? null : _register,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                    child: _loading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text("สมัครสมาชิก"),
+                  ),
+                ),
+                const SizedBox(width: 15),
+                SizedBox(
+                  width: 120,
+                  height: 45,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const LoginRiderPage()),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                    child: const Text("ยกเลิก"),
+                  ),
+                ),
+              ],
             ),
+            //
           ],
         ),
       ),
